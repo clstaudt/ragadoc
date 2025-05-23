@@ -1,0 +1,15 @@
+name: ragnarok
+channels:
+  - defaults
+  - conda-forge # Often useful for more packages
+dependencies:
+  - python=3.12
+  - pip
+  - setuptools
+  - streamlit
+  # You can add other conda packages here
+  - pip:
+    - ollama
+    - -e . # Installs the ragnarok package in editable mode
+    # If you have packages not on conda, list them under pip:
+    # - package_from_pip 
