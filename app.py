@@ -3,9 +3,40 @@ import ollama
 import uuid
 from datetime import datetime
 from streamlit_pdf_viewer import pdf_viewer
+import PyPDF2
+import pdfplumber
+import io
 
 st.set_page_config(page_title="Ollama Chatbot", layout="wide")
 st.title("Ollama Chatbot")
+
+# PDF Processing functions
+def extract_text_from_pdf(pdf_file) -> str:
+    """Extract text from uploaded PDF file"""
+    try:
+        # Try with pdfplumber first (usually better for text extraction)
+        pdf_bytes = pdf_file.getvalue()
+        
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            text = ""
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+        
+        if text.strip():
+            return text
+        
+        # Fallback to PyPDF2 if pdfplumber doesn't work
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        
+        return text
+    except Exception as e:
+        st.error(f"Error extracting text from PDF: {e}")
+        return ""
 
 # Function to get available Ollama models
 def get_ollama_models():
@@ -51,7 +82,8 @@ def create_new_chat():
         "title": "New Document Chat",
         "document_uploaded": False,
         "document_name": None,
-        "document_content": None
+        "document_content": None,
+        "document_text": ""
     }
     st.session_state.current_chat_id = chat_id
     return chat_id
@@ -225,15 +257,27 @@ if not document_uploaded and st.session_state.current_chat_id:
     )
     
     if uploaded_file is not None:
-        # Update chat with document info
-        st.session_state.chats[st.session_state.current_chat_id]["document_uploaded"] = True
-        st.session_state.chats[st.session_state.current_chat_id]["document_name"] = uploaded_file.name
-        st.session_state.chats[st.session_state.current_chat_id]["document_content"] = uploaded_file.getvalue()
-        st.session_state.chats[st.session_state.current_chat_id]["title"] = f"📄 {uploaded_file.name}"
+        # Extract text from the PDF
+        with st.spinner("Processing PDF and extracting text..."):
+            extracted_text = extract_text_from_pdf(uploaded_file)
         
-        st.success(f"✅ Document '{uploaded_file.name}' uploaded successfully!")
-        st.info("💬 You can now start asking questions about your document below.")
-        st.rerun()
+        if extracted_text:
+            # Update chat with document info
+            st.session_state.chats[st.session_state.current_chat_id]["document_uploaded"] = True
+            st.session_state.chats[st.session_state.current_chat_id]["document_name"] = uploaded_file.name
+            st.session_state.chats[st.session_state.current_chat_id]["document_content"] = uploaded_file.getvalue()
+            st.session_state.chats[st.session_state.current_chat_id]["document_text"] = extracted_text
+            st.session_state.chats[st.session_state.current_chat_id]["title"] = f"📄 {uploaded_file.name}"
+            
+            st.success(f"✅ Document '{uploaded_file.name}' uploaded and processed successfully!")
+            st.info("💬 You can now start asking questions about your document below.")
+            
+            # Show extracted text info
+            word_count = len(extracted_text.split())
+            st.info(f"📊 Extracted {word_count:,} words from the document")
+            st.rerun()
+        else:
+            st.error("❌ Could not extract text from the PDF. Please ensure it's a text-based PDF document.")
 
 else:
     # Show current document info if uploaded
@@ -279,8 +323,29 @@ if document_uploaded:
                 try:
                     # Display assistant response with streaming
                     with st.chat_message("assistant"):
+                        # Get document context
+                        current_chat = st.session_state.chats.get(st.session_state.current_chat_id, {})
+                        document_text = current_chat.get('document_text', '')
+                        
                         # Prepare messages for Ollama API (list of dicts)
                         current_conversation = []
+                        
+                        # Add document context as system message if available
+                        if document_text:
+                            system_prompt = f"""You are a helpful assistant that answers questions about documents. You have been provided with the following document content:
+
+--- DOCUMENT CONTENT ---
+{document_text}
+--- END DOCUMENT CONTENT ---
+
+Please answer questions based on this document content. If a question cannot be answered from the document, please say so clearly."""
+                            
+                            current_conversation.append({
+                                'role': 'system', 
+                                'content': system_prompt
+                            })
+                        
+                        # Add conversation history
                         for msg in get_current_messages():
                             current_conversation.append({'role': msg['role'], 'content': msg['content']})
                         

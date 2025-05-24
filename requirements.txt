@@ -1,3 +1,5 @@
 streamlit
 ollama
-streamlit-pdf-viewer 
+streamlit-pdf-viewer
+PyPDF2
+pdfplumber 

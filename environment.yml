@@ -10,7 +10,9 @@ dependencies:
   # You can add other conda packages here
   - pip:
     - ollama
-    - streamlit-pdf-viewer 
+    - streamlit-pdf-viewer
+    - PyPDF2
+    - pdfplumber
     - -e . # Installs the ragnarok package in editable mode
     # If you have packages not on conda, list them under pip:
     # - package_from_pip 
