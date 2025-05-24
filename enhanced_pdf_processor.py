@@ -325,7 +325,7 @@ class EnhancedPDFProcessor:
                 pdf_viewer(
                     input=highlighted_pdf_bytes,
                     width="100%",
-                    height=600,  # Slightly smaller height for inline display
+                    height=1200,
                     render_text=True,
                     key=f"evidence_pdf_{hash(ai_response)}"  # Unique key per response
                 )
@@ -370,12 +370,11 @@ class EnhancedPDFProcessor:
                             st.session_state.chats[chat_id]['highlight_terms'] = all_quotes
                     
                     # Display the highlighted PDF directly
-                    st.markdown("### 🎯 **Highlighted Document:**")
                     from streamlit_pdf_viewer import pdf_viewer
                     pdf_viewer(
                         input=highlighted_pdf_bytes,
                         width="100%",
-                        height=600,
+                        height=1200,
                         render_text=True,
                         key=f"inline_highlighted_pdf_{hash(ai_response)}"
                     )
@@ -486,7 +485,7 @@ class EnhancedPDFProcessor:
                 page_text = page.get_text()
                 
                 for i, term in enumerate(search_terms):
-                    # Try exact search first
+                    # Strategy 1: Try exact search first
                     instances = page.search_for(term, quads=True)
                     
                     if instances:
@@ -496,26 +495,89 @@ class EnhancedPDFProcessor:
                             highlight.update()
                             total_highlights += 1
                     else:
-                        # Try fuzzy matching
-                        if self._fuzzy_text_match(term, page_text):
-                            # Search for significant words
-                            words = term.split()
-                            significant_words = [w for w in words if len(w) > 3]
-                            
-                            highlighted_any = False
-                            for word in significant_words[:5]:  # Limit to first 5 significant words
-                                word_instances = page.search_for(word, quads=True)
-                                for inst in word_instances:
-                                    highlight = page.add_highlight_annot(inst)
-                                    highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for word highlights
-                                    highlight.update()
-                                    total_highlights += 1
-                                    highlighted_any = True
+                        # Strategy 2: Try to find the most distinctive parts of the quote
+                        highlighted_parts = self._find_and_highlight_distinctive_parts(page, term)
+                        total_highlights += highlighted_parts
             
             return highlighted_doc.tobytes()
             
         finally:
             highlighted_doc.close()
+    
+    def _find_and_highlight_distinctive_parts(self, page, term: str) -> int:
+        """Find and highlight the most distinctive/important parts of a quote"""
+        highlighted_count = 0
+        words = term.split()
+        
+        if len(words) < 5:  # Only work with substantial quotes
+            return 0
+        
+        # Strategy 1: Look for longer phrases (minimum 5 consecutive words)
+        for phrase_length in range(min(len(words), 10), 4, -1):  # 10 words down to 5 words
+            for start_idx in range(len(words) - phrase_length + 1):
+                phrase = ' '.join(words[start_idx:start_idx + phrase_length])
+                
+                instances = page.search_for(phrase, quads=True)
+                if instances:
+                    for inst in instances:
+                        highlight = page.add_highlight_annot(inst)
+                        highlight.set_colors(stroke=(1, 0.9, 0))  # Light yellow for phrase matches
+                        highlight.update()
+                    highlighted_count += len(instances)
+                    return highlighted_count  # Found a substantial phrase, stop here
+        
+        # Strategy 2: Only if no 5+ word phrases found, look for very specific distinctive phrases
+        # But be much more conservative
+        distinctive_phrases = self._extract_very_specific_phrases(term)
+        
+        for phrase in distinctive_phrases:
+            if len(phrase.split()) >= 4:  # Only highlight phrases with 4+ words
+                instances = page.search_for(phrase, quads=True)
+                if instances:
+                    for inst in instances:
+                        highlight = page.add_highlight_annot(inst)
+                        highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for specific phrases
+                        highlight.update()
+                    highlighted_count += len(instances)
+                    if highlighted_count > 0:
+                        break  # Found something substantial, stop
+        
+        return highlighted_count
+    
+    def _extract_very_specific_phrases(self, text: str) -> list:
+        """Extract only very specific and substantial phrases, avoiding single word matches"""
+        distinctive_phrases = []
+        words = text.split()
+        
+        # Only look for longer sequences that are likely to be unique/specific
+        for length in range(min(len(words), 8), 3, -1):  # 8 words down to 4 words
+            for i in range(len(words) - length + 1):
+                phrase = ' '.join(words[i:i + length])
+                
+                # Only include if it's substantial and likely unique
+                if self._is_substantial_phrase(phrase):
+                    distinctive_phrases.append(phrase)
+        
+        return distinctive_phrases[:3]  # Limit to top 3 most promising phrases
+    
+    def _is_substantial_phrase(self, phrase: str) -> bool:
+        """Check if a phrase is substantial enough to be worth highlighting"""
+        words = phrase.split()
+        
+        # Must be at least 4 words
+        if len(words) < 4:
+            return False
+        
+        # Look for indicators of substantial/specific content
+        indicators = [
+            any(len(word) > 8 for word in words),  # Contains long technical words
+            any(word[0].isupper() and len(word) > 3 for word in words),  # Contains proper nouns
+            '"' in phrase or '(' in phrase or ')' in phrase,  # Contains specific formatting
+            any(char in phrase for char in [':', '—', '/', '-']),  # Contains specific punctuation
+        ]
+        
+        # Require at least 2 indicators of specificity
+        return sum(indicators) >= 2
     
     def get_highlighted_pdf_bytes(self) -> bytes:
         """Get the highlighted PDF bytes for display"""
