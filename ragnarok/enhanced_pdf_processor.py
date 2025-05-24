@@ -316,19 +316,26 @@ class EnhancedPDFProcessor:
             st.markdown("### 🎯 **Evidence from Document:**")
             
             # Create highlighted PDF
-            highlighted_pdf_bytes = self._create_robust_highlighted_pdf(highlight_terms)
+            highlighted_pdf_bytes, first_highlight_page = self._create_robust_highlighted_pdf(highlight_terms)
             
             if highlighted_pdf_bytes:
                 # Display the highlighted PDF directly
                 from streamlit_pdf_viewer import pdf_viewer
                 
-                pdf_viewer(
-                    input=highlighted_pdf_bytes,
-                    width="100%",
-                    height=1200,
-                    render_text=True,
-                    key=f"evidence_pdf_{hash(ai_response)}"  # Unique key per response
-                )
+                # Set up PDF viewer parameters
+                viewer_params = {
+                    "input": highlighted_pdf_bytes,
+                    "width": "100%",
+                    "height": 900,
+                    "render_text": True,
+                    "key": f"evidence_pdf_{hash(ai_response)}"
+                }
+                
+                # If we found highlights, scroll to that page automatically
+                if first_highlight_page:
+                    viewer_params["scroll_to_page"] = first_highlight_page
+                
+                pdf_viewer(**viewer_params)
                 
                 # Show what's highlighted in a compact format
                 st.caption(f"🎯 Highlighted: {', '.join([f'\"{term}\"' for term in highlight_terms[:3]])}" + 
@@ -359,7 +366,7 @@ class EnhancedPDFProcessor:
             # Just create and show the highlighted PDF
             all_quotes = list(citation_quotes.values())
             if all_quotes:
-                highlighted_pdf_bytes = self._create_robust_highlighted_pdf(all_quotes)
+                highlighted_pdf_bytes, first_highlight_page = self._create_robust_highlighted_pdf(all_quotes)
                 
                 if highlighted_pdf_bytes:
                     # Store for the document viewer to use
@@ -371,13 +378,21 @@ class EnhancedPDFProcessor:
                     
                     # Display the highlighted PDF directly
                     from streamlit_pdf_viewer import pdf_viewer
-                    pdf_viewer(
-                        input=highlighted_pdf_bytes,
-                        width="100%",
-                        height=1200,
-                        render_text=True,
-                        key=f"inline_highlighted_pdf_{hash(ai_response)}"
-                    )
+                    
+                    # Set up PDF viewer parameters
+                    viewer_params = {
+                        "input": highlighted_pdf_bytes,
+                        "width": "100%",
+                        "height": 900,
+                        "render_text": True,
+                        "key": f"inline_highlighted_pdf_{hash(ai_response)}"
+                    }
+                    
+                    # If we found highlights, scroll to that page automatically
+                    if first_highlight_page:
+                        viewer_params["scroll_to_page"] = first_highlight_page
+                    
+                    pdf_viewer(**viewer_params)
             
             return len(citation_quotes)
         else:
@@ -461,7 +476,7 @@ class EnhancedPDFProcessor:
         """Create highlighted PDF and store it for the document viewer"""
         try:
             # Create highlighted version using robust search
-            highlighted_pdf_bytes = self._create_robust_highlighted_pdf(highlight_terms)
+            highlighted_pdf_bytes, first_highlight_page = self._create_robust_highlighted_pdf(highlight_terms)
             
             # Store in session state for the document viewer to use
             if 'current_chat_id' in st.session_state and st.session_state.current_chat_id:
@@ -472,12 +487,13 @@ class EnhancedPDFProcessor:
         except Exception as e:
             print(f"DEBUG: Error creating highlighted PDF: {e}")
     
-    def _create_robust_highlighted_pdf(self, search_terms: List[str]) -> bytes:
+    def _create_robust_highlighted_pdf(self, search_terms: List[str]) -> tuple:
         """Create highlighted PDF using robust text matching"""
         # Create a copy of the document for highlighting
         highlighted_doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
         
         total_highlights = 0
+        first_highlight_page = None
         
         try:
             for page_num in range(highlighted_doc.page_count):
@@ -493,13 +509,17 @@ class EnhancedPDFProcessor:
                             highlight = page.add_highlight_annot(inst)
                             highlight.set_colors(stroke=(1, 1, 0))  # Yellow highlight
                             highlight.update()
+                            if first_highlight_page is None:
+                                first_highlight_page = page_num + 1  # PDF pages are 1-indexed
                             total_highlights += 1
                     else:
                         # Strategy 2: Try to find the most distinctive parts of the quote
                         highlighted_parts = self._find_and_highlight_distinctive_parts(page, term)
+                        if highlighted_parts > 0 and first_highlight_page is None:
+                            first_highlight_page = page_num + 1  # PDF pages are 1-indexed
                         total_highlights += highlighted_parts
             
-            return highlighted_doc.tobytes()
+            return highlighted_doc.tobytes(), first_highlight_page
             
         finally:
             highlighted_doc.close()
@@ -540,7 +560,7 @@ class EnhancedPDFProcessor:
                         highlight.update()
                     highlighted_count += len(instances)
                     if highlighted_count > 0:
-                        break  # Found something substantial, stop
+                        return highlighted_count  # Found something substantial, stop
         
         return highlighted_count
     

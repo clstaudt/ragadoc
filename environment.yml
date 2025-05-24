@@ -1,18 +1,19 @@
 name: ragnarok
 channels:
   - defaults
-  - conda-forge # Often useful for more packages
+  - conda-forge
 dependencies:
   - python=3.12
   - pip
   - setuptools
   - streamlit
-  # You can add other conda packages here
+  - pillow
+  - pytest
+  - pytest-cov
+  - pypdf2
+  - pdfplumber
   - pip:
     - ollama
     - streamlit-pdf-viewer
-    - PyPDF2
-    - pdfplumber
-    - -e . # Installs the ragnarok package in editable mode
-    # If you have packages not on conda, list them under pip:
-    # - package_from_pip 
+    - PyMuPDF
+    - -e . 

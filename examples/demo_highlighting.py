@@ -4,9 +4,13 @@ Demo script showing PyMuPDF highlighting capabilities
 Run this to test highlighting functionality before integrating with the main app
 """
 
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import streamlit as st
 import fitz  # PyMuPDF
-from enhanced_pdf_processor import EnhancedPDFProcessor
+from ragnarok import EnhancedPDFProcessor
 import io
 
 st.set_page_config(page_title="PyMuPDF Highlighting Demo", layout="wide")

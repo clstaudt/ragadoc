@@ -3,4 +3,7 @@ ollama
 streamlit-pdf-viewer
 PyPDF2
 pdfplumber
-PyMuPDF 
+PyMuPDF
+pytest
+pytest-cov
+pillow 
