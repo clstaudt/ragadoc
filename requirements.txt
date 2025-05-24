@@ -2,4 +2,5 @@ streamlit
 ollama
 streamlit-pdf-viewer
 PyPDF2
-pdfplumber 
+pdfplumber
+PyMuPDF 
