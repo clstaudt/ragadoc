@@ -359,8 +359,36 @@ Please answer questions based on this document content. If a question cannot be 
                                 if chunk['message']['content']:
                                     yield chunk['message']['content']
                         
-                        # Stream the response
-                        assistant_response = st.write_stream(generate_response())
+                        # Create a status placeholder
+                        status_placeholder = st.empty()
+                        
+                        # Show spinner while waiting for first chunk
+                        with status_placeholder.container():
+                            with st.spinner("Thinking"):
+                                # Get the response generator
+                                response_generator = generate_response()
+                                # Try to get the first chunk to exit spinner context
+                                try:
+                                    first_chunk = next(response_generator)
+                                    has_first_chunk = True
+                                except StopIteration:
+                                    has_first_chunk = False
+                                    first_chunk = ""
+                        
+                        # Now stream outside the spinner context
+                        if has_first_chunk:
+                            # Clear the status placeholder and start streaming
+                            status_placeholder.empty()
+                            
+                            def complete_stream():
+                                yield first_chunk
+                                for chunk in response_generator:
+                                    yield chunk
+                            
+                            assistant_response = st.write_stream(complete_stream())
+                        else:
+                            status_placeholder.error("No response received from the model.")
+                            assistant_response = ""
                     
                     # Add assistant response to chat history
                     add_message_to_current_chat("assistant", assistant_response)
