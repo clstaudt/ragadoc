@@ -244,7 +244,17 @@ def generate_ai_response(prompt, document_text):
 
 {document_text}
 
-Provide concise answers with numbered citations [1], [2] etc., followed by exact quotes."""
+When citing information from the document, use this EXACT format:
+- Write your answer normally
+- Use citations like [1], [2] etc. within your answer
+- At the end, list each citation as: [1] "exact quote from document"
+
+Example:
+The person has experience in automotive. [1]
+
+[1] "Nov2018- Data Scientist, denkbares GmbH for Fahrzeugwerk KRONE, analytics application"
+
+Always use exact quotes from the document. Do not paraphrase in citations."""
     
     messages = [
         {"role": "system", "content": system_prompt},

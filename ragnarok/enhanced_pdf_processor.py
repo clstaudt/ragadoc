@@ -137,26 +137,27 @@ class EnhancedPDFProcessor:
             return 0
 
     def _extract_quotes_from_ai_response(self, ai_response: str) -> Dict[int, str]:
-        """Extract numbered quotes directly from AI response"""
+        """Extract numbered quotes from AI response using the standardized format"""
         citation_quotes = {}
 
-        # Pattern: [1] "quote text"
-        pattern = r'\[(\d+)\]\s*"([^"]+)"'
-        matches = re.findall(pattern, ai_response, re.MULTILINE | re.DOTALL)
+        # Primary pattern: [1] "exact quote" - as specified in our prompt
+        pattern = r'^\[(\d+)\]\s*"([^"]+)"'
+        matches = re.findall(pattern, ai_response, re.MULTILINE)
 
         for match in matches:
             citation_num = int(match[0])
             quote_text = match[1].strip()
             citation_quotes[citation_num] = quote_text
 
-        # Alternative pattern: [1]: "quote"
-        pattern2 = r'\[(\d+)\]:\s*"([^"]+)"'
-        matches2 = re.findall(pattern2, ai_response, re.MULTILINE | re.DOTALL)
-
-        for match in matches2:
-            citation_num = int(match[0])
-            quote_text = match[1].strip()
-            citation_quotes[citation_num] = quote_text
+        # Fallback: Handle legacy format with colon [1]: "quote"
+        if not citation_quotes:
+            fallback_pattern = r'^\[(\d+)\]:\s*"([^"]+)"'
+            fallback_matches = re.findall(fallback_pattern, ai_response, re.MULTILINE)
+            
+            for match in fallback_matches:
+                citation_num = int(match[0])
+                quote_text = match[1].strip()
+                citation_quotes[citation_num] = quote_text
 
         return citation_quotes
 
