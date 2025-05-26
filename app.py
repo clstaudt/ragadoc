@@ -7,6 +7,10 @@ from streamlit_pdf_viewer import pdf_viewer
 import pdfplumber
 import io
 from ragnarok import EnhancedPDFProcessor
+from loguru import logger
+
+# Configure loguru logging - simple console logging with defaults
+# loguru automatically logs to console by default, no configuration needed
 
 # Check if we're running in Docker
 def is_running_in_docker():

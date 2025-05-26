@@ -5,6 +5,7 @@ Simplified PDF processor with highlighting capabilities using PyMuPDF
 import streamlit as st
 import fitz  # PyMuPDF
 import re
+from loguru import logger
 from typing import List, Tuple, Dict, Optional
 
 
@@ -96,29 +97,26 @@ class EnhancedPDFProcessor:
         # Extract quotes from AI response
         citation_quotes = self._extract_quotes_from_ai_response(ai_response)
 
-        # Debug information
+        # Log debug information instead of showing in UI
         if not citation_quotes:
-            # Show what we're looking for vs what we found
-            st.caption("🔍 Debug: Citation extraction details")
-            with st.expander("Debug Citation Parsing", expanded=False):
-                st.text("AI Response:")
-                st.code(ai_response[:500] + "..." if len(ai_response) > 500 else ai_response)
-                
-                # Show what patterns we tried
-                patterns = [
-                    (r'^\[(\d+)\]\s*"([^"]+)"', "Pattern 1: [1] \"quote\""),
-                    (r'^\[(\d+)\]:\s*"([^"]+)"', "Pattern 2: [1]: \"quote\""),
-                    (r'\[Exact quote:\s*"([^"]+)"\]', "Pattern 3: [Exact quote: \"text\"]"),
-                    (r'\["([^"]+)"\]', "Pattern 3b: [\"text\"]"),
-                    (r'"([^"]{20,})"', "Pattern 4: Any quotes 20+ chars")
-                ]
-                
-                for pattern, description in patterns:
-                    matches = re.findall(pattern, ai_response, re.MULTILINE | re.IGNORECASE)
-                    st.text(f"{description}: {len(matches)} matches")
-                    if matches:
-                        for i, match in enumerate(matches[:3]):  # Show first 3
-                            st.text(f"  Match {i+1}: {str(match)[:100]}...")
+            logger.debug("No citations found, attempting pattern matching")
+            logger.debug(f"AI Response (first 500 chars): {ai_response[:500]}")
+            
+            # Log what patterns we tried
+            patterns = [
+                (r'^\[(\d+)\]\s*"([^"]+)"', "Pattern 1: [1] \"quote\""),
+                (r'^\[(\d+)\]:\s*"([^"]+)"', "Pattern 2: [1]: \"quote\""),
+                (r'\[Exact quote:\s*"([^"]+)"\]', "Pattern 3: [Exact quote: \"text\"]"),
+                (r'\["([^"]+)"\]', "Pattern 3b: [\"text\"]"),
+                (r'"([^"]{20,})"', "Pattern 4: Any quotes 20+ chars")
+            ]
+            
+            for pattern, description in patterns:
+                matches = re.findall(pattern, ai_response, re.MULTILINE | re.IGNORECASE)
+                logger.debug(f"{description}: {len(matches)} matches")
+                if matches:
+                    for i, match in enumerate(matches[:3]):  # Log first 3
+                        logger.debug(f"  Match {i+1}: {str(match)[:100]}...")
 
         if citation_quotes:
             all_quotes = list(citation_quotes.values())

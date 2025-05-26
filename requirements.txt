@@ -6,4 +6,5 @@ pdfplumber
 PyMuPDF
 pytest
 pytest-cov
-pillow 
+pillow
+loguru

@@ -16,4 +16,5 @@ dependencies:
     - ollama
     - streamlit-pdf-viewer
     - PyMuPDF
+    - loguru
     - -e . 
