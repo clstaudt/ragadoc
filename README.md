@@ -49,18 +49,9 @@ A Streamlit-based application for chatting with PDF documents using local Large 
 
 ## Testing
 
-Run the regression test suite:
-
 ```bash
 python -m pytest tests/ -v
 ```
-
-The test suite includes:
-- Environment detection and configuration
-- PDF processing and text extraction  
-- Model integration and response handling
-- Citation extraction and matching
-- End-to-end workflow validation
 
 ## Configuration
 
@@ -83,9 +74,3 @@ OLLAMA_HOST=0.0.0.0:11434 ollama serve
 - **"No models found"**: Pull a model with `ollama pull olmo2:7b`
 - **"Can't connect"**: Restart Ollama with correct host settings
 - **Upload fails**: Use "🗑️ Clear Upload" button to reset file state
-
-## Notes
-
-- Chat history is stored in memory (lost on restart)
-- First model load may take 30+ seconds
-- Tested with Ollama 0.7.x and Python 3.8+ 
