@@ -96,8 +96,39 @@ class EnhancedPDFProcessor:
         # Extract quotes from AI response
         citation_quotes = self._extract_quotes_from_ai_response(ai_response)
 
+        # Debug information
+        if not citation_quotes:
+            # Show what we're looking for vs what we found
+            st.caption("🔍 Debug: Citation extraction details")
+            with st.expander("Debug Citation Parsing", expanded=False):
+                st.text("AI Response:")
+                st.code(ai_response[:500] + "..." if len(ai_response) > 500 else ai_response)
+                
+                # Show what patterns we tried
+                patterns = [
+                    (r'^\[(\d+)\]\s*"([^"]+)"', "Pattern 1: [1] \"quote\""),
+                    (r'^\[(\d+)\]:\s*"([^"]+)"', "Pattern 2: [1]: \"quote\""),
+                    (r'\[Exact quote:\s*"([^"]+)"\]', "Pattern 3: [Exact quote: \"text\"]"),
+                    (r'\["([^"]+)"\]', "Pattern 3b: [\"text\"]"),
+                    (r'"([^"]{20,})"', "Pattern 4: Any quotes 20+ chars")
+                ]
+                
+                for pattern, description in patterns:
+                    matches = re.findall(pattern, ai_response, re.MULTILINE | re.IGNORECASE)
+                    st.text(f"{description}: {len(matches)} matches")
+                    if matches:
+                        for i, match in enumerate(matches[:3]):  # Show first 3
+                            st.text(f"  Match {i+1}: {str(match)[:100]}...")
+
         if citation_quotes:
             all_quotes = list(citation_quotes.values())
+            
+            # Show found citations
+            st.caption(f"✅ Found {len(citation_quotes)} citation(s)")
+            with st.expander("Found Citations", expanded=False):
+                for num, quote in citation_quotes.items():
+                    st.text(f"[{num}] \"{quote[:100]}{'...' if len(quote) > 100 else ''}\"")
+            
             highlighted_pdf_bytes, first_highlight_page = self._create_highlighted_pdf(
                 all_quotes
             )
@@ -137,27 +168,55 @@ class EnhancedPDFProcessor:
             return 0
 
     def _extract_quotes_from_ai_response(self, ai_response: str) -> Dict[int, str]:
-        """Extract numbered quotes from AI response using the standardized format"""
+        """Extract numbered quotes from AI response using multiple patterns"""
         citation_quotes = {}
 
-        # Primary pattern: [1] "exact quote" - as specified in our prompt
-        pattern = r'^\[(\d+)\]\s*"([^"]+)"'
-        matches = re.findall(pattern, ai_response, re.MULTILINE)
-
-        for match in matches:
+        # Pattern 1: [1] "exact quote" - the preferred format
+        pattern1 = r'^\[(\d+)\]\s*"([^"]+)"'
+        matches1 = re.findall(pattern1, ai_response, re.MULTILINE)
+        
+        for match in matches1:
             citation_num = int(match[0])
             quote_text = match[1].strip()
             citation_quotes[citation_num] = quote_text
 
-        # Fallback: Handle legacy format with colon [1]: "quote"
+        # Pattern 2: [1]: "exact quote" - legacy format with colon
         if not citation_quotes:
-            fallback_pattern = r'^\[(\d+)\]:\s*"([^"]+)"'
-            fallback_matches = re.findall(fallback_pattern, ai_response, re.MULTILINE)
+            pattern2 = r'^\[(\d+)\]:\s*"([^"]+)"'
+            matches2 = re.findall(pattern2, ai_response, re.MULTILINE)
             
-            for match in fallback_matches:
+            for match in matches2:
                 citation_num = int(match[0])
                 quote_text = match[1].strip()
                 citation_quotes[citation_num] = quote_text
+
+        # Pattern 3: [Exact quote: "text"] - current problematic format
+        if not citation_quotes:
+            pattern3 = r'\[Exact quote:\s*"([^"]+)"\]'
+            matches3 = re.findall(pattern3, ai_response, re.IGNORECASE)
+            
+            for i, quote_text in enumerate(matches3, 1):
+                citation_quotes[i] = quote_text.strip()
+
+        # Pattern 3b: "text" in brackets without "Exact quote:" prefix
+        if not citation_quotes:
+            pattern3b = r'\["([^"]+)"\]'
+            matches3b = re.findall(pattern3b, ai_response)
+            
+            for i, quote_text in enumerate(matches3b, 1):
+                if len(quote_text.strip()) > 15:  # Only substantial quotes
+                    citation_quotes[i] = quote_text.strip()
+
+        # Pattern 4: Any text in double quotes as fallback
+        if not citation_quotes:
+            pattern4 = r'"([^"]{20,})"'  # At least 20 characters
+            matches4 = re.findall(pattern4, ai_response)
+            
+            for i, quote_text in enumerate(matches4, 1):
+                # Only use if it looks like a substantial quote
+                cleaned = quote_text.strip()
+                if len(cleaned) > 15 and not cleaned.startswith('http'):
+                    citation_quotes[i] = cleaned
 
         return citation_quotes
 

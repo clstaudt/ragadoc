@@ -1,14 +1,37 @@
 import streamlit as st
 import ollama
 import uuid
+import os
 from datetime import datetime
 from streamlit_pdf_viewer import pdf_viewer
 import pdfplumber
 import io
 from ragnarok import EnhancedPDFProcessor
 
+# Check if we're running in Docker
+def is_running_in_docker():
+    """Check if we're running inside a Docker container"""
+    return (
+        os.path.exists('/.dockerenv') or 
+        os.environ.get('STREAMLIT_SERVER_ADDRESS') == '0.0.0.0'
+    )
+
+# Initialize environment
+in_docker = is_running_in_docker()
+
+if in_docker:
+    # Docker environment - use configured endpoint
+    ollama_base_url = os.environ.get('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
+else:
+    # Direct execution - use default ollama behavior (don't touch env vars at all)
+    ollama_base_url = "http://localhost:11434"  # Just for display
+
 # Configuration
-st.set_page_config(page_title="Ollama PDF Chat", layout="wide")
+st.set_page_config(
+    page_title="Ollama PDF Chat", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 st.title("Ollama PDF Chat")
 
 class ChatManager:
@@ -22,8 +45,7 @@ class ChatManager:
         defaults = {
             "chats": {},
             "current_chat_id": None,
-            "selected_model": None,
-            "highlighting_enabled": True
+            "selected_model": None
         }
         
         for key, value in defaults.items():
@@ -101,25 +123,34 @@ class ModelManager:
     def get_available_models():
         """Get available Ollama models"""
         try:
-            models_info = ollama.list()
+            if in_docker:
+                # Docker - use explicit client configuration
+                client = ollama.Client(host=ollama_base_url)
+                models_info = client.list()
+            else:
+                # Direct execution - use default ollama client
+                models_info = ollama.list()
+                
             if 'models' in models_info:
                 return [model.get('model', model.get('name', '')) 
                        for model in models_info['models']]
             return []
         except Exception as e:
-            st.error(f"Error fetching models: {e}")
+            # Provide helpful error message based on likely causes
+            error_msg = f"Error connecting to Ollama: {e}"
+            if "Connection refused" in str(e) or "No connection" in str(e):
+                error_msg += "\n\nPlease ensure Ollama is running:\n"
+                if in_docker:
+                    error_msg += "- For Docker access: `OLLAMA_HOST=0.0.0.0:11434 ollama serve`"
+                else:
+                    error_msg += "- Direct execution: `ollama serve`"
+            st.error(error_msg)
             return []
 
 def render_sidebar(chat_manager):
     """Render the sidebar with chat history"""
     with st.sidebar:
         st.header("Chat History")
-        
-        # Smart highlighting toggle
-        st.session_state.highlighting_enabled = st.checkbox(
-            "Smart Citations", 
-            value=st.session_state.highlighting_enabled
-        )
         
         # New chat button
         if st.button("New Chat", use_container_width=True, type="primary"):
@@ -162,31 +193,45 @@ def render_document_upload(chat_manager):
     st.header("Upload Document")
     st.info("Upload a PDF document to start chatting")
     
+    # Clear upload button for problematic files
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🗑️ Clear Upload", help="Clear file upload state if stuck"):
+            # Force clear the uploader by creating a new chat
+            chat_manager.create_new_chat()
+            st.rerun()
+    
+    # Use a unique key per chat to avoid file state conflicts
+    uploader_key = f"uploader_{st.session_state.current_chat_id}"
     uploaded_file = st.file_uploader(
         "Choose a PDF file",
         type=['pdf'],
-        key=f"uploader_{st.session_state.current_chat_id}"
+        key=uploader_key
     )
     
     if uploaded_file is not None:
-        with st.spinner("Processing PDF..."):
-            extracted_text = PDFProcessor.extract_text(uploaded_file)
-        
-        if extracted_text:
-            # Update current chat with document
-            chat = chat_manager.get_current_chat()
-            chat.update({
-                "document_name": uploaded_file.name,
-                "document_content": uploaded_file.getvalue(),
-                "document_text": extracted_text,
-                "title": f"Doc: {uploaded_file.name}"
-            })
+        try:
+            with st.spinner("Processing PDF..."):
+                extracted_text = PDFProcessor.extract_text(uploaded_file)
             
-            st.success(f"Document '{uploaded_file.name}' processed successfully!")
-            st.info(f"Extracted {len(extracted_text.split()):,} words")
-            st.rerun()
-        else:
-            st.error("Could not extract text from PDF")
+            if extracted_text:
+                # Update current chat with document
+                chat = chat_manager.get_current_chat()
+                chat.update({
+                    "document_name": uploaded_file.name,
+                    "document_content": uploaded_file.getvalue(),
+                    "document_text": extracted_text,
+                    "title": f"Doc: {uploaded_file.name}"
+                })
+                
+                st.success(f"Document '{uploaded_file.name}' processed successfully!")
+                st.info(f"Extracted {len(extracted_text.split()):,} words")
+                st.rerun()
+            else:
+                st.error("Could not extract text from PDF")
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
+            st.info("💡 If this file was uploaded before, try clicking '🗑️ Clear Upload' and upload again")
 
 def render_chat_interface(chat_manager):
     """Render the main chat interface"""
@@ -231,9 +276,8 @@ def render_chat_interface(chat_manager):
                     # Note: Display is handled within generate_ai_response for reasoning support
                     chat_manager.add_message("assistant", response)
                     
-                    # Show citations if enabled
-                    if st.session_state.highlighting_enabled:
-                        show_citations(response, chat)
+                    # Show citations
+                    show_citations(response, chat)
                         
                 except Exception as e:
                     st.error(f"Error generating response: {e}")
@@ -244,17 +288,29 @@ def generate_ai_response(prompt, document_text):
 
 {document_text}
 
-When citing information from the document, use this EXACT format:
-- Write your answer normally
-- Use citations like [1], [2] etc. within your answer
-- At the end, list each citation as: [1] "exact quote from document"
+CRITICAL CITATION FORMAT:
+You MUST use citations in this EXACT format for text highlighting to work:
 
-Example:
-The person has experience in automotive. [1]
+1. Write your answer normally with citation numbers like [1], [2]
+2. At the end, list each citation on a new line starting with the number in brackets, followed by a space and the exact quote in double quotes
 
-[1] "Nov2018- Data Scientist, denkbares GmbH for Fahrzeugwerk KRONE, analytics application"
+REQUIRED FORMAT:
+[1] "exact quote from document"
+[2] "another exact quote from document"
 
-Always use exact quotes from the document. Do not paraphrase in citations."""
+EXAMPLE:
+Question: Does he have experience in the medical field?
+Answer: Yes, Christian Staudt has experience in the medical field. [1] [2]
+
+[1] "project development for AI applications: medical data mining & AI, AI for renewable energy control"
+[2] "developing a prototype for data-driven measurement of global marketing campaign performance across channels"
+
+RULES:
+- Citations MUST start at the beginning of a line
+- Citations MUST use the format [number] "quote" 
+- Use exact quotes from the document, not paraphrases
+- Each citation on its own line
+- Do NOT use colons, "Exact quote:", or other text before the quote"""
     
     messages = [
         {"role": "system", "content": system_prompt},
@@ -273,11 +329,23 @@ Always use exact quotes from the document. Do not paraphrase in citations."""
     answer_placeholder = st.empty()
     
     try:
-        for chunk in ollama.chat(
-            model=st.session_state.selected_model,
-            messages=messages,
-            stream=True
-        ):
+        if in_docker:
+            # Docker - use explicit client configuration
+            client = ollama.Client(host=ollama_base_url)
+            chat_stream = client.chat(
+                model=st.session_state.selected_model,
+                messages=messages,
+                stream=True
+            )
+        else:
+            # Direct execution - use default ollama client
+            chat_stream = ollama.chat(
+                model=st.session_state.selected_model,
+                messages=messages,
+                stream=True
+            )
+            
+        for chunk in chat_stream:
             if chunk['message']['content']:
                 chunk_content = chunk['message']['content']
                 full_response += chunk_content
@@ -345,6 +413,13 @@ def show_citations(response, chat):
 def main():
     """Main application"""
     chat_manager = ChatManager()
+    
+    # Show connection info
+    with st.sidebar:
+        if in_docker:
+            st.caption(f"🐳 Docker → {ollama_base_url}")
+        else:
+            st.caption(f"💻 Direct → localhost:11434")
     
     # Model selection
     available_models = ModelManager.get_available_models()
