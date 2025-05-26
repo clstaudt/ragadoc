@@ -105,8 +105,8 @@ class EnhancedPDFProcessor:
             
             # Log what patterns we tried
             patterns = [
-                (r'^\[(\d+)\]\s*"([^"]+)"', "Pattern 1: [1] \"quote\""),
-                (r'^\[(\d+)\]:\s*"([^"]+)"', "Pattern 2: [1]: \"quote\""),
+                (r'\[(\d+)\]\s*"([^"]+)"', "Pattern 1: [1] \"quote\""),
+                (r'\[(\d+)\]:\s*"([^"]+)"', "Pattern 2: [1]: \"quote\""),
                 (r'\[Exact quote:\s*"([^"]+)"\]', "Pattern 3: [Exact quote: \"text\"]"),
                 (r'\["([^"]+)"\]', "Pattern 3b: [\"text\"]"),
                 (r'"([^"]{20,})"', "Pattern 4: Any quotes 20+ chars")
@@ -170,8 +170,8 @@ class EnhancedPDFProcessor:
         """Extract numbered quotes from AI response using multiple patterns"""
         citation_quotes = {}
 
-        # Pattern 1: [1] "exact quote" - the preferred format
-        pattern1 = r'^\[(\d+)\]\s*"([^"]+)"'
+        # Pattern 1: [1] "exact quote" - the preferred format (anywhere in line, not just start)
+        pattern1 = r'\[(\d+)\]\s*"([^"]+)"'
         matches1 = re.findall(pattern1, ai_response, re.MULTILINE)
         
         for match in matches1:
@@ -181,9 +181,9 @@ class EnhancedPDFProcessor:
             focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
             citation_quotes[citation_num] = focused_quote
 
-        # Pattern 2: [1]: "exact quote" - legacy format with colon
+        # Pattern 2: [1]: "exact quote" - legacy format with colon (anywhere in line)
         if not citation_quotes:
-            pattern2 = r'^\[(\d+)\]:\s*"([^"]+)"'
+            pattern2 = r'\[(\d+)\]:\s*"([^"]+)"'
             matches2 = re.findall(pattern2, ai_response, re.MULTILINE)
             
             for match in matches2:
@@ -246,8 +246,10 @@ class EnhancedPDFProcessor:
             question_keywords.extend(['time', 'uhrzeit'])
         if re.search(r'\bdate\b', combined_text, re.IGNORECASE):
             question_keywords.extend(['date'])
-        if re.search(r'\bprice\b|\bcost\b', combined_text, re.IGNORECASE):
-            question_keywords.extend(['price', 'cost', 'euro', '€'])
+        if re.search(r'\bprice\b|\bcost\b|\bpercent\b|\b%\b', combined_text, re.IGNORECASE):
+            question_keywords.extend(['price', 'cost', 'euro', '€', 'percent', '%'])
+        if re.search(r'\badvantage\b|\bbenefit\b|\bfaster\b|\bsmaller\b|\bimprove\b', combined_text, re.IGNORECASE):
+            question_keywords.extend(['advantage', 'benefit', 'faster', 'smaller', 'improve', 'times'])
             
         # If we have question keywords, try to find the most relevant part
         if question_keywords:
@@ -255,7 +257,7 @@ class EnhancedPDFProcessor:
             best_segment = quote_text  # fallback
             best_score = 0
             
-            # Try different segment sizes
+            # Try different segment sizes, prioritizing meaningful phrases
             for segment_size in [3, 5, 7, 10]:
                 if segment_size >= len(words):
                     continue
@@ -274,6 +276,12 @@ class EnhancedPDFProcessor:
                         score += 2
                     if re.search(r'\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}', segment):  # Date pattern
                         score += 2
+                    # Look for percentage patterns with context
+                    if re.search(r'\d+%\s+\w+|\w+\s+\d+%', segment):  # Percentage with context
+                        score += 3
+                    # Look for comparative patterns (6 times faster, 50% smaller)
+                    if re.search(r'\d+\s+times\s+\w+|\d+%\s+\w+', segment):  # Comparative patterns
+                        score += 3
                     
                     if score > best_score:
                         best_score = score
@@ -283,22 +291,41 @@ class EnhancedPDFProcessor:
             if best_score > 0 and len(best_segment.split()) < len(words) * 0.7:
                 return best_segment
         
-        # If no good focused segment found, try to extract key information
-        # Look for time patterns
-        time_matches = re.findall(r'\d{1,2}:\d{2}(?:\s*-\s*\d{1,2}/\d{1,2}/\d{4})?', quote_text)
-        if time_matches:
-            # Return the time with some context
-            for time_match in time_matches:
-                time_pos = quote_text.find(time_match)
-                if time_pos != -1:
-                    # Get some words around the time
-                    start = max(0, time_pos - 20)
-                    end = min(len(quote_text), time_pos + len(time_match) + 20)
-                    context = quote_text[start:end].strip()
-                    if len(context.split()) <= 10:
-                        return context
+        # If no good focused segment found, try to extract key information patterns
+        # Look for percentage patterns with context (this is key for the "50%" issue)
+        percentage_matches = re.findall(r'\w*\s*\d+%\s*\w*', quote_text)
+        if percentage_matches:
+            for match in percentage_matches:
+                if len(match.strip()) > 3:  # Must have some context
+                    return match.strip()
         
-        # If still too long, just take the first part
+        # Look for comparative patterns (6 times faster, etc.)
+        comparative_matches = re.findall(r'\d+\s+times\s+\w+|\w+\s+\d+\s+times', quote_text)
+        if comparative_matches:
+            for match in comparative_matches:
+                return match.strip()
+        
+        # Look for time patterns with context
+        time_matches = re.findall(r'\w*\s*\d{1,2}:\d{2}\s*\w*', quote_text)
+        if time_matches:
+            for match in time_matches:
+                if len(match.strip()) > 5:  # Must have some context
+                    return match.strip()
+        
+        # If still too long, try to find the most meaningful part
+        # Look for sentences with numbers or key information
+        sentences = re.split(r'[.!?]', quote_text)
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if len(sentence.split()) <= 12 and (
+                re.search(r'\d+%', sentence) or  # Contains percentage
+                re.search(r'\d+\s+times', sentence) or  # Contains "X times"
+                re.search(r'\d{1,2}:\d{2}', sentence) or  # Contains time
+                any(keyword.lower() in sentence.lower() for keyword in question_keywords)  # Contains question keywords
+            ):
+                return sentence
+        
+        # Final fallback - just take the first part
         words = quote_text.split()
         if len(words) > 15:
             return " ".join(words[:15]) + "..."
@@ -317,10 +344,11 @@ class EnhancedPDFProcessor:
                 page = highlighted_doc[page_num]
 
                 for term in search_terms:
-                    # Try exact search first
+                    # Try exact search first for the complete term
                     instances = page.search_for(term, quads=True)
 
                     if instances:
+                        # Found exact match - highlight it
                         for inst in instances:
                             highlight = page.add_highlight_annot(inst)
                             highlight.set_colors(stroke=(1, 1, 0))  # Yellow highlight
@@ -328,11 +356,21 @@ class EnhancedPDFProcessor:
                             if first_highlight_page is None:
                                 first_highlight_page = page_num + 1
                     else:
-                        # For long quotes, try smart highlighting
-                        if len(term.split()) >= 5:
+                        # No exact match found - try smart highlighting for longer quotes
+                        if len(term.split()) >= 3:  # Lowered threshold for better coverage
                             found = self._smart_highlight_long_quote(page, term)
                             if found and first_highlight_page is None:
                                 first_highlight_page = page_num + 1
+                        else:
+                            # For short terms, try case-insensitive search
+                            instances_case_insensitive = page.search_for(term, quads=True, flags=fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE)
+                            if instances_case_insensitive:
+                                for inst in instances_case_insensitive:
+                                    highlight = page.add_highlight_annot(inst)
+                                    highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for case-insensitive matches
+                                    highlight.update()
+                                    if first_highlight_page is None:
+                                        first_highlight_page = page_num + 1
 
             return highlighted_doc.tobytes(), first_highlight_page
 
@@ -340,41 +378,67 @@ class EnhancedPDFProcessor:
             highlighted_doc.close()
 
     def _smart_highlight_long_quote(self, page, term: str) -> bool:
-        """Smart highlighting for long quotes - tries to find key parts"""
+        """Smart highlighting for long quotes - tries to find key parts with context"""
         words = term.split()
         found_any = False
         
-        # Extract key information patterns (times, dates, numbers, important words)
-        key_patterns = []
+        # First, try to find the exact quote or substantial parts of it
+        # This is more reliable than extracting individual patterns
         
-        # Look for time patterns (HH:MM)
-        time_pattern = r'\b\d{1,2}:\d{2}\b'
-        times = re.findall(time_pattern, term)
-        key_patterns.extend(times)
+        # Try to find phrases with context (3-8 words)
+        for phrase_length in range(min(len(words), 8), 2, -1):
+            for start_idx in range(len(words) - phrase_length + 1):
+                phrase = " ".join(words[start_idx : start_idx + phrase_length])
+                
+                # Skip very generic phrases
+                if len(phrase.strip()) < 10:
+                    continue
+                    
+                instances = page.search_for(phrase, quads=True)
+                if instances:
+                    for inst in instances:
+                        highlight = page.add_highlight_annot(inst)
+                        highlight.set_colors(stroke=(1, 1, 0))  # Yellow for exact matches
+                        highlight.update()
+                        found_any = True
+                    # Found substantial phrase match, we're done
+                    return True
         
-        # Look for date patterns (DD/MM/YYYY or similar)
-        date_pattern = r'\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b'
-        dates = re.findall(date_pattern, term)
-        key_patterns.extend(dates)
+        # If no substantial phrases found, try contextual pattern matching
+        # Extract key information patterns with surrounding context
+        key_patterns_with_context = []
         
-        # Look for numbers that might be important
-        number_pattern = r'\b\d+\b'
-        numbers = re.findall(number_pattern, term)
-        # Only include numbers that are likely important (not too common)
-        important_numbers = [n for n in numbers if len(n) >= 2]
-        key_patterns.extend(important_numbers)
+        # Look for time patterns with context (e.g., "at 14:30" or "14:30 departure")
+        time_pattern = r'\b\w*\s*\d{1,2}:\d{2}\s*\w*\b'
+        time_matches = re.findall(time_pattern, term)
+        key_patterns_with_context.extend([match.strip() for match in time_matches if len(match.strip()) > 5])
         
-        # Try to highlight key patterns first
-        for pattern in key_patterns:
+        # Look for date patterns with context
+        date_pattern = r'\b\w*\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\w*\b'
+        date_matches = re.findall(date_pattern, term)
+        key_patterns_with_context.extend([match.strip() for match in date_matches if len(match.strip()) > 8])
+        
+        # Look for percentage patterns with context (e.g., "50% smaller", "increased by 23%")
+        percentage_pattern = r'\b\w*\s*\d+%\s*\w*\b'
+        percentage_matches = re.findall(percentage_pattern, term)
+        key_patterns_with_context.extend([match.strip() for match in percentage_matches if len(match.strip()) > 3])
+        
+        # Look for number patterns with meaningful context (avoid standalone numbers)
+        number_with_context_pattern = r'\b\w+\s+\d+\s+\w+\b|\b\d+\s+\w+\s+\w+\b'
+        number_matches = re.findall(number_with_context_pattern, term)
+        key_patterns_with_context.extend([match.strip() for match in number_matches if len(match.strip()) > 8])
+        
+        # Try to highlight contextual patterns
+        for pattern in key_patterns_with_context:
             instances = page.search_for(pattern, quads=True)
             if instances:
                 for inst in instances:
                     highlight = page.add_highlight_annot(inst)
-                    highlight.set_colors(stroke=(0, 1, 0))  # Green for key info
+                    highlight.set_colors(stroke=(0, 1, 0))  # Green for contextual matches
                     highlight.update()
                     found_any = True
         
-        # If we found key patterns, we're done
+        # If we found contextual patterns, we're done
         if found_any:
             return True
             
@@ -382,13 +446,19 @@ class EnhancedPDFProcessor:
         return self._highlight_partial_matches(page, term)
 
     def _highlight_partial_matches(self, page, term: str) -> bool:
-        """Find and highlight partial matches for longer quotes"""
+        """Find and highlight partial matches for longer quotes with better context preservation"""
         words = term.split()
 
-        # Try phrases of decreasing length
-        for phrase_length in range(min(len(words), 8), 3, -1):
+        # Try phrases of decreasing length, but be more selective
+        for phrase_length in range(min(len(words), 8), 4, -1):  # Start from 4 words minimum
             for start_idx in range(len(words) - phrase_length + 1):
                 phrase = " ".join(words[start_idx : start_idx + phrase_length])
+                
+                # Skip phrases that are just numbers or very generic
+                if (re.match(r'^\d+$', phrase.strip()) or  # Just a number
+                    phrase.strip().lower() in ['the', 'and', 'of', 'to', 'in', 'for', 'is', 'on', 'that', 'by'] or
+                    len(phrase.strip()) < 8):  # Too short
+                    continue
 
                 instances = page.search_for(phrase, quads=True)
                 if instances:
@@ -398,9 +468,33 @@ class EnhancedPDFProcessor:
                             stroke=(1, 0.8, 0)
                         )  # Orange for partial matches
                         highlight.update()
-                    return True  # Found something, stop here
+                    return True  # Found something meaningful, stop here
         
-        return False  # Nothing found
+        # If we still haven't found anything, try to find meaningful 3-word phrases
+        # but only if they contain important information
+        for start_idx in range(len(words) - 2):
+            phrase = " ".join(words[start_idx : start_idx + 3])
+            
+            # Only highlight 3-word phrases if they contain meaningful information
+            if (re.search(r'\d+%', phrase) or  # Contains percentage
+                re.search(r'\d+\s+\w+', phrase) or  # Contains "number word"
+                re.search(r'\w+\s+\d+', phrase) or  # Contains "word number"
+                re.search(r'\d{1,2}:\d{2}', phrase) or  # Contains time
+                len(phrase.strip()) >= 12):  # Or is substantial enough
+                
+                # Additional check: avoid standalone numbers
+                if not re.match(r'^\d+$', phrase.strip()):
+                    instances = page.search_for(phrase, quads=True)
+                    if instances:
+                        for inst in instances:
+                            highlight = page.add_highlight_annot(inst)
+                            highlight.set_colors(
+                                stroke=(1, 0.6, 0)
+                            )  # Darker orange for 3-word contextual matches
+                            highlight.update()
+                        return True  # Found something, stop here
+        
+        return False  # Nothing meaningful found
 
     def __del__(self):
         """Clean up document resources"""
