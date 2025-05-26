@@ -177,9 +177,13 @@ class EnhancedPDFProcessor:
         for match in matches1:
             citation_num = int(match[0])
             quote_text = match[1].strip()
-            # Try to extract more focused quotes for long citations
-            focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
-            citation_quotes[citation_num] = focused_quote
+            # For citation highlighting, preserve the full quote text
+            # Only use focused extraction for very long quotes (>20 words)
+            if len(quote_text.split()) > 20:
+                focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
+                citation_quotes[citation_num] = focused_quote
+            else:
+                citation_quotes[citation_num] = quote_text
 
         # Pattern 2: [1]: "exact quote" - legacy format with colon (anywhere in line)
         if not citation_quotes:
@@ -189,8 +193,13 @@ class EnhancedPDFProcessor:
             for match in matches2:
                 citation_num = int(match[0])
                 quote_text = match[1].strip()
-                focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
-                citation_quotes[citation_num] = focused_quote
+                # For citation highlighting, preserve the full quote text
+                # Only use focused extraction for very long quotes (>20 words)
+                if len(quote_text.split()) > 20:
+                    focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
+                    citation_quotes[citation_num] = focused_quote
+                else:
+                    citation_quotes[citation_num] = quote_text
 
         # Pattern 3: [Exact quote: "text"] - current problematic format
         if not citation_quotes:
@@ -198,8 +207,14 @@ class EnhancedPDFProcessor:
             matches3 = re.findall(pattern3, ai_response, re.IGNORECASE)
             
             for i, quote_text in enumerate(matches3, 1):
-                focused_quote = self._extract_focused_quote(quote_text.strip(), ai_response, user_question)
-                citation_quotes[i] = focused_quote
+                quote_text = quote_text.strip()
+                # For citation highlighting, preserve the full quote text
+                # Only use focused extraction for very long quotes (>20 words)
+                if len(quote_text.split()) > 20:
+                    focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
+                    citation_quotes[i] = focused_quote
+                else:
+                    citation_quotes[i] = quote_text
 
         # Pattern 3b: "text" in brackets without "Exact quote:" prefix
         if not citation_quotes:
@@ -208,8 +223,14 @@ class EnhancedPDFProcessor:
             
             for i, quote_text in enumerate(matches3b, 1):
                 if len(quote_text.strip()) > 15:  # Only substantial quotes
-                    focused_quote = self._extract_focused_quote(quote_text.strip(), ai_response, user_question)
-                    citation_quotes[i] = focused_quote
+                    quote_text = quote_text.strip()
+                    # For citation highlighting, preserve the full quote text
+                    # Only use focused extraction for very long quotes (>20 words)
+                    if len(quote_text.split()) > 20:
+                        focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
+                        citation_quotes[i] = focused_quote
+                    else:
+                        citation_quotes[i] = quote_text
 
         # Pattern 4: Any text in double quotes as fallback
         if not citation_quotes:
@@ -220,8 +241,13 @@ class EnhancedPDFProcessor:
                 # Only use if it looks like a substantial quote
                 cleaned = quote_text.strip()
                 if len(cleaned) > 15 and not cleaned.startswith('http'):
-                    focused_quote = self._extract_focused_quote(cleaned, ai_response, user_question)
-                    citation_quotes[i] = focused_quote
+                    # For citation highlighting, preserve the full quote text
+                    # Only use focused extraction for very long quotes (>20 words)
+                    if len(cleaned.split()) > 20:
+                        focused_quote = self._extract_focused_quote(cleaned, ai_response, user_question)
+                        citation_quotes[i] = focused_quote
+                    else:
+                        citation_quotes[i] = cleaned
 
         return citation_quotes
 
