@@ -281,7 +281,7 @@ def render_chat_interface(chat_manager):
                     chat_manager.add_message("assistant", response)
                     
                     # Show citations
-                    show_citations(response, chat)
+                    show_citations(response, chat, prompt)
                         
                 except Exception as e:
                     st.error(f"Error generating response: {e}")
@@ -314,7 +314,11 @@ RULES:
 - Citations MUST use the format [number] "quote" 
 - Use exact quotes from the document, not paraphrases
 - Each citation on its own line
-- Do NOT use colons, "Exact quote:", or other text before the quote"""
+- Do NOT use colons, "Exact quote:", or other text before the quote
+- IMPORTANT: Quote only the SPECIFIC text that directly answers the question, not entire sentences or paragraphs
+- For time/date questions, quote only the relevant time/date, not the entire schedule line
+- For specific facts, quote only the relevant fact, not surrounding context
+- Keep quotes focused and precise to ensure accurate highlighting"""
     
     messages = [
         {"role": "system", "content": system_prompt},
@@ -403,13 +407,13 @@ RULES:
         st.error(f"Error during streaming: {e}")
         return ""
 
-def show_citations(response, chat):
+def show_citations(response, chat, user_question=""):
     """Show citation-based references"""
     if chat.get("document_content"):
         try:
             pdf_processor = EnhancedPDFProcessor(chat["document_content"])
             pdf_processor.display_citation_based_references(
-                response, chat["document_text"]
+                response, chat["document_text"], user_question
             )
         except Exception as e:
             st.warning(f"Could not show citations: {e}")

@@ -1,4 +1,3 @@
 - Never forget to update the conda environment config file when you update the requirements.txt
 - Make sure there are concise and up to date docstrings that document usage.
 - Debug information belongs into the command line logs, not in the app UI/UX.
-- 
