@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  # Streamlit application
+  app:
+    build: .
+    container_name: ragnarok-app
+    ports:
+      - "8501:8501"
+    environment:
+      # Configure Ollama connection (both env vars for compatibility)
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data  # For persistent data storage
+    extra_hosts:
+      - "host.docker.internal:host-gateway" 
