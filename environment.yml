@@ -17,4 +17,5 @@ dependencies:
     - streamlit-pdf-viewer
     - PyMuPDF
     - loguru
+    - tiktoken
     - -e . 

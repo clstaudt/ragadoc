@@ -150,6 +150,192 @@ class ModelManager:
                     error_msg += "- Direct execution: `ollama serve`"
             st.error(error_msg)
             return []
+    
+    @staticmethod
+    def get_model_info(model_name):
+        """Get detailed model information including context length"""
+        try:
+            if in_docker:
+                # Docker - use explicit client configuration
+                client = ollama.Client(host=ollama_base_url)
+                model_info = client.show(model_name)
+            else:
+                # Direct execution - use default ollama client
+                model_info = ollama.show(model_name)
+            
+            return model_info
+        except Exception as e:
+            logger.warning(f"Could not get model info for {model_name}: {e}")
+            return None
+    
+    @staticmethod
+    def get_context_length(model_name):
+        """Get the context length for a specific model"""
+        model_info = ModelManager.get_model_info(model_name)
+        
+        # Try to get context length from model parameters first
+        if model_info:
+            try:
+                # Check in parameters first
+                if 'parameters' in model_info:
+                    params = model_info['parameters']
+                    if 'num_ctx' in params:
+                        return int(params['num_ctx'])
+                
+                # Check in model details/template
+                if 'details' in model_info:
+                    details = model_info['details']
+                    if 'parameter_size' in details:
+                        # Some models have context info in details
+                        pass
+                        
+            except Exception as e:
+                logger.warning(f"Error parsing model info for {model_name}: {e}")
+        
+        # Fallback to default context lengths for common model families
+        try:
+            model_lower = model_name.lower()
+            if 'llama3.1' in model_lower or 'llama-3.1' in model_lower:
+                return 131072  # 128k context
+            elif 'llama3' in model_lower or 'llama-3' in model_lower:
+                return 8192    # 8k context
+            elif 'llama2' in model_lower or 'llama-2' in model_lower:
+                return 4096    # 4k context
+            elif 'mistral' in model_lower:
+                return 32768   # 32k context for most Mistral models
+            elif 'codellama' in model_lower:
+                return 16384   # 16k context
+            elif 'deepseek' in model_lower:
+                return 32768   # 32k context
+            elif 'qwen' in model_lower:
+                return 32768   # 32k context
+            else:
+                # Default fallback
+                return 2048
+                
+        except Exception as e:
+            logger.warning(f"Error parsing context length for {model_name}: {e}")
+            return 2048  # Conservative default
+
+class ContextChecker:
+    """Utility class for checking context window compatibility"""
+    
+    @staticmethod
+    def estimate_token_count(text):
+        """Estimate token count using multiple methods for better accuracy"""
+        if not text:
+            return 0
+        
+        # Try to use tiktoken for more accurate counting (if available)
+        try:
+            import tiktoken
+            # Use cl100k_base encoding (used by GPT-4, similar to most modern LLMs)
+            encoding = tiktoken.get_encoding("cl100k_base")
+            return len(encoding.encode(text))
+        except ImportError:
+            pass
+        
+        # Fallback: Multiple estimation methods
+        char_count = len(text)
+        word_count = len(text.split())
+        
+        # Different estimation approaches
+        char_based = char_count // 4  # ~4 chars per token (conservative)
+        word_based = int(word_count * 1.3)  # ~1.3 tokens per word (average)
+        
+        # Use the higher estimate to be conservative
+        return max(char_based, word_based)
+    
+    @staticmethod
+    def check_document_fits_context(document_text, model_name, system_prompt_length=2000):
+        """Check if document + system prompt fits in model's context window"""
+        if not document_text or not model_name:
+            return True, None, None
+        
+        context_length = ModelManager.get_context_length(model_name)
+        if context_length is None:
+            return True, None, "Could not determine model context length"
+        
+        doc_tokens = ContextChecker.estimate_token_count(document_text)
+        total_tokens = doc_tokens + system_prompt_length  # Reserve space for system prompt and user query
+        
+        fits = total_tokens <= context_length
+        usage_percent = (total_tokens / context_length) * 100
+        
+        return fits, {
+            'context_length': context_length,
+            'document_tokens': doc_tokens,
+            'total_estimated_tokens': total_tokens,
+            'usage_percent': usage_percent,
+            'available_tokens': context_length - total_tokens
+        }, None
+    
+    @staticmethod
+    def display_context_warning(context_info, model_name):
+        """Display context window usage information and warnings"""
+        if not context_info:
+            return
+        
+        usage_percent = context_info['usage_percent']
+        
+        if usage_percent > 100:
+            st.error("⚠️ **Document Too Large for Context Window**")
+            st.error(f"""
+            **Model:** {model_name}  
+            **Context Limit:** {context_info['context_length']:,} tokens  
+            **Document Size:** ~{context_info['document_tokens']:,} tokens  
+            **Usage:** {usage_percent:.1f}% (exceeds limit by {context_info['total_estimated_tokens'] - context_info['context_length']:,} tokens)
+            
+            **The document is too large for this model's context window.**
+            """)
+            
+            with st.expander("💡 Solutions for Large Documents", expanded=True):
+                st.markdown(f"""
+                **Option 1: Use a model with larger context window**
+                - Switch to a model like `llama3.1:8b` (128k context) or `mistral:latest` (32k context)
+                
+                **Option 2: Create a custom model with larger context**
+                ```bash
+                # Create a Modelfile
+                echo "FROM {model_name}
+                PARAMETER num_ctx 32768" > Modelfile
+                
+                # Create custom model
+                ollama create {model_name.split(':')[0]}-large -f Modelfile
+                ```
+                
+                **Option 3: Document chunking (future feature)**
+                - Break document into smaller chunks
+                - Process each chunk separately
+                """)
+                
+        elif usage_percent > 80:
+            st.warning("⚠️ **High Context Usage**")
+            st.warning(f"""
+            **Model:** {model_name}  
+            **Context Limit:** {context_info['context_length']:,} tokens  
+            **Document Size:** ~{context_info['document_tokens']:,} tokens  
+            **Usage:** {usage_percent:.1f}% of context window  
+            **Available:** ~{context_info['available_tokens']:,} tokens for conversation
+            
+            **The document uses most of the context window. Long conversations may be truncated.**
+            """)
+            
+        elif usage_percent > 50:
+            st.info("ℹ️ **Moderate Context Usage**")
+            st.info(f"""
+            **Model:** {model_name}  
+            **Context Usage:** {usage_percent:.1f}% ({context_info['document_tokens']:,} / {context_info['context_length']:,} tokens)  
+            **Available:** ~{context_info['available_tokens']:,} tokens for conversation
+            """)
+            
+        else:
+            st.success("✅ **Document fits comfortably in context window**")
+            st.success(f"""
+            **Model:** {model_name}  
+            **Context Usage:** {usage_percent:.1f}% ({context_info['document_tokens']:,} / {context_info['context_length']:,} tokens)  
+            **Available:** ~{context_info['available_tokens']:,} tokens for conversation
+            """)
 
 def render_sidebar(chat_manager):
     """Render the sidebar with chat history"""
@@ -230,6 +416,43 @@ def render_document_upload(chat_manager):
                 
                 st.success(f"Document '{uploaded_file.name}' processed successfully!")
                 st.info(f"Extracted {len(extracted_text.split()):,} words")
+                
+                # Check context window compatibility
+                if st.session_state.selected_model:
+                    fits, context_info, error = ContextChecker.check_document_fits_context(
+                        extracted_text, st.session_state.selected_model
+                    )
+                    
+                    if error:
+                        st.warning(f"Could not check context compatibility: {error}")
+                    elif context_info:
+                        usage_percent = context_info['usage_percent']
+                        
+                        # Always show progress bar and basic info after upload
+                        st.markdown("---")
+                        st.markdown("**📊 Context Check:**")
+                        
+                        # Show progress bar for context usage
+                        progress_value = min(usage_percent / 100, 1.0)  # Cap at 100% for display
+                        st.progress(progress_value, text=f"Context Usage: {usage_percent:.1f}%")
+                        
+                        # Show status with appropriate color and clear messaging
+                        if usage_percent > 100:
+                            st.error(f"⚠️ **Document too large** - Uses {usage_percent:.0f}% of context window")
+                            excess_tokens = context_info['total_estimated_tokens'] - context_info['context_length']
+                            st.caption(f"Document exceeds limit by ~{excess_tokens:,} tokens")
+                        elif usage_percent > 80:
+                            st.warning(f"⚠️ **High context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
+                            st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
+                        elif usage_percent > 50:
+                            st.info(f"ℹ️ **Moderate context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
+                            st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
+                        else:
+                            st.success(f"✅ **Good fit** - Uses {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
+                            st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
+                else:
+                    st.info("💡 Select a model to check context window compatibility")
+                
                 st.rerun()
             else:
                 st.error("❌ **Document Processing Failed**")
@@ -270,15 +493,46 @@ def render_chat_interface(chat_manager):
         with st.expander("📄 Current Document", expanded=False):
             st.write(f"**Document:** {chat['document_name']}")
             
-            # Show PDF viewer
-            if chat.get("document_content"):
-                pdf_viewer(
-                    input=chat["document_content"],
-                    width="100%",
-                    height=600,
-                    render_text=True,
-                    key=f"pdf_viewer_{st.session_state.current_chat_id}"
+            # Show context compatibility info with progress bar
+            if st.session_state.selected_model and chat.get("document_text"):
+                fits, context_info, error = ContextChecker.check_document_fits_context(
+                    chat["document_text"], st.session_state.selected_model
                 )
+                
+                if context_info:
+                    usage_percent = context_info['usage_percent']
+                    
+                    # Show progress bar for context usage
+                    progress_value = min(usage_percent / 100, 1.0)  # Cap at 100% for display
+                    st.progress(progress_value, text=f"Context Usage: {usage_percent:.1f}%")
+                    
+                    # Show brief summary
+                    st.caption(f"~{context_info['document_tokens']:,} tokens / {context_info['context_length']:,} limit")
+            
+            # Show PDF and extracted text side by side
+            if chat.get("document_content") and chat.get("document_text"):
+                col1, col2 = st.columns([1, 1])
+                
+                with col1:
+                    st.subheader("📄 PDF Document")
+                    pdf_viewer(
+                        input=chat["document_content"],
+                        width="100%",
+                        height=600,
+                        render_text=True,
+                        key=f"pdf_viewer_{st.session_state.current_chat_id}"
+                    )
+                
+                with col2:
+                    st.subheader("📝 Extracted Text")
+                    # Show extracted text in a scrollable container
+                    st.text_area(
+                        "Document content:",
+                        value=chat["document_text"],
+                        height=600,
+                        disabled=True,
+                        label_visibility="collapsed"
+                    )
     
     # Display chat messages
     for message in chat.get("messages", []):
@@ -314,8 +568,6 @@ def render_chat_interface(chat_manager):
         # Show message when document processing failed
         st.warning("⚠️ **Chat Disabled**: No valid document content available. Please upload a PDF document with readable text to start chatting.")
         st.info("The document may have failed to process, or the extracted text may be empty. Try uploading a different PDF file.")
-
-
 
 def generate_ai_response(prompt, document_text):
     """Generate AI response using Ollama with reasoning support"""
@@ -516,13 +768,45 @@ def main():
     # Model selection
     available_models = ModelManager.get_available_models()
     if available_models:
+        previous_model = st.session_state.selected_model
         st.session_state.selected_model = st.selectbox(
             "Choose an Ollama model:",
             available_models,
             index=0 if not st.session_state.selected_model else 
                   (available_models.index(st.session_state.selected_model) 
-                   if st.session_state.selected_model in available_models else 0)
+                   if st.session_state.selected_model in available_models else 0),
+            key="model_selector"
         )
+        
+        # Force rerun if model changed to ensure context check updates immediately
+        if previous_model != st.session_state.selected_model and previous_model is not None:
+            st.rerun()
+        
+        # Only show context warnings in main area for serious issues (>80% usage)
+        current_chat = chat_manager.get_current_chat()
+        document_text = current_chat.get("document_text", "")
+        
+        if st.session_state.selected_model and document_text and document_text.strip():
+            fits, context_info, error = ContextChecker.check_document_fits_context(
+                document_text, st.session_state.selected_model
+            )
+            
+            if error:
+                st.markdown("---")
+                st.warning(f"⚠️ Could not check context compatibility: {error}")
+            elif context_info:
+                usage_percent = context_info['usage_percent']
+                
+                # Only show warnings for serious issues (>80% usage)
+                if usage_percent > 100:
+                    st.markdown("---")
+                    st.error(f"⚠️ **Document too large** - Uses {usage_percent:.0f}% of context window")
+                    excess_tokens = context_info['total_estimated_tokens'] - context_info['context_length']
+                    st.caption(f"Document exceeds limit by ~{excess_tokens:,} tokens")
+                elif usage_percent > 80:
+                    st.markdown("---")
+                    st.warning(f"⚠️ **High context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
+                    st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
     else:
         st.error("No Ollama models found. Please ensure Ollama is running.")
         return

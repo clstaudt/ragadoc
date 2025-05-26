@@ -202,6 +202,184 @@ class TestModelManager:
             assert models == []
 
 
+class TestContextChecking:
+    """Context window checking regression tests"""
+    
+    def test_token_estimation_basic(self):
+        """Test basic token estimation functionality"""
+        from app import ContextChecker
+        
+        # Test empty text
+        assert ContextChecker.estimate_token_count("") == 0
+        assert ContextChecker.estimate_token_count(None) == 0
+        
+        # Test simple text
+        tokens = ContextChecker.estimate_token_count("Hello world")
+        assert tokens > 0
+        assert tokens < 20  # Should be reasonable
+        
+        # Test longer text should have more tokens
+        short_text = "Hello"
+        long_text = "Hello " * 100
+        short_tokens = ContextChecker.estimate_token_count(short_text)
+        long_tokens = ContextChecker.estimate_token_count(long_text)
+        assert long_tokens > short_tokens
+    
+    def test_model_context_length_fallback_logic(self):
+        """Test model context length detection fallback logic for known models"""
+        from app import ModelManager
+        
+        # Test known model families - should use fallback logic when model info unavailable
+        test_cases = [
+            ("llama3.1:8b", 131072),  # 128k context
+            ("llama3:8b", 8192),      # 8k context
+            ("llama2:7b", 4096),      # 4k context
+            ("mistral:latest", 32768), # 32k context
+            ("codellama:13b", 16384),  # 16k context
+            ("unknown-model:latest", 2048),  # Default fallback
+        ]
+        
+        for model_name, expected_context in test_cases:
+            context_length = ModelManager.get_context_length(model_name)
+            assert context_length == expected_context, f"Expected {expected_context} for {model_name}, got {context_length}"
+    
+    def test_context_compatibility_checking_with_fallback(self):
+        """Test document context compatibility checking using fallback logic"""
+        from app import ContextChecker
+        
+        # Test small document (should fit)
+        small_doc = "This is a small test document. " * 10
+        fits, context_info, error = ContextChecker.check_document_fits_context(small_doc, "llama3.1:8b")
+        
+        assert fits is True
+        assert context_info is not None
+        assert error is None
+        assert context_info['usage_percent'] < 50  # Should be well under limit
+        
+        # Test very large document (should not fit in small context)
+        large_doc = "This is a large test document. " * 1000
+        fits, context_info, error = ContextChecker.check_document_fits_context(large_doc, "llama2:7b")  # 4k context
+        
+        assert context_info is not None
+        assert error is None
+        # Large doc might not fit in small context
+        assert context_info['usage_percent'] > 0
+    
+    def test_context_checking_edge_cases(self):
+        """Test context checking with edge cases"""
+        from app import ContextChecker
+        
+        # Test with None/empty inputs
+        fits, context_info, error = ContextChecker.check_document_fits_context(None, "llama3:8b")
+        assert fits is True
+        
+        fits, context_info, error = ContextChecker.check_document_fits_context("", "llama3:8b")
+        assert fits is True
+        
+        fits, context_info, error = ContextChecker.check_document_fits_context("test", None)
+        assert fits is True
+        
+        fits, context_info, error = ContextChecker.check_document_fits_context("test", "")
+        assert fits is True
+
+
+@pytest.mark.integration
+class TestOllamaIntegration:
+    """Integration tests that require Ollama to be running"""
+    
+    def _is_ollama_available(self):
+        """Check if Ollama is available for testing"""
+        try:
+            import ollama
+            ollama.list()
+            return True
+        except Exception:
+            return False
+    
+    def test_ollama_model_list_integration(self):
+        """Test getting available models from Ollama"""
+        if not self._is_ollama_available():
+            pytest.skip("Ollama not available - skipping integration test")
+        
+        from app import ModelManager
+        models = ModelManager.get_available_models()
+        
+        # Should return a list (may be empty if no models installed)
+        assert isinstance(models, list)
+    
+    def test_ollama_model_info_integration(self):
+        """Test getting model info from Ollama for available models"""
+        if not self._is_ollama_available():
+            pytest.skip("Ollama not available - skipping integration test")
+        
+        from app import ModelManager
+        models = ModelManager.get_available_models()
+        
+        if not models:
+            pytest.skip("No Ollama models available - skipping model info test")
+        
+        # Test with first available model
+        model_name = models[0]
+        model_info = ModelManager.get_model_info(model_name)
+        
+        # Should return some info or None (both are valid)
+        # model_info can be None (on error) or an Ollama ShowResponse object
+        assert model_info is None or hasattr(model_info, 'modelfile')
+        
+        # If we got model info, it should have expected attributes
+        if model_info is not None:
+            assert hasattr(model_info, 'modified_at')
+            assert hasattr(model_info, 'modelfile')
+    
+    def test_context_length_with_real_model(self):
+        """Test context length detection with real Ollama models"""
+        if not self._is_ollama_available():
+            pytest.skip("Ollama not available - skipping integration test")
+        
+        from app import ModelManager
+        models = ModelManager.get_available_models()
+        
+        if not models:
+            pytest.skip("No Ollama models available - skipping context length test")
+        
+        # Test with first available model
+        model_name = models[0]
+        context_length = ModelManager.get_context_length(model_name)
+        
+        # Should return a positive integer
+        assert isinstance(context_length, int)
+        assert context_length > 0
+        assert context_length >= 2048  # Minimum reasonable context
+    
+    def test_full_context_checking_workflow(self):
+        """Test complete context checking workflow with real models"""
+        if not self._is_ollama_available():
+            pytest.skip("Ollama not available - skipping integration test")
+        
+        from app import ModelManager, ContextChecker
+        models = ModelManager.get_available_models()
+        
+        if not models:
+            pytest.skip("No Ollama models available - skipping workflow test")
+        
+        # Test with first available model
+        model_name = models[0]
+        test_doc = "This is a test document for context checking. " * 50
+        
+        fits, context_info, error = ContextChecker.check_document_fits_context(test_doc, model_name)
+        
+        # Should complete without error
+        assert error is None
+        assert isinstance(fits, bool)
+        
+        if context_info:
+            assert 'context_length' in context_info
+            assert 'document_tokens' in context_info
+            assert 'usage_percent' in context_info
+            assert context_info['context_length'] > 0
+            assert context_info['document_tokens'] > 0
+
+
 class TestCitationExtraction:
     """Citation functionality regression tests"""
     
