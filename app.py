@@ -32,11 +32,11 @@ else:
 
 # Configuration
 st.set_page_config(
-    page_title="Ollama PDF Chat", 
+    page_title="Document Q&A", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
-st.title("Ollama PDF Chat")
+st.title("Document Q&A")
 
 class ChatManager:
     """Simplified chat management"""
