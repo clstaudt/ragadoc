@@ -11,5 +11,13 @@ pillow
 loguru
 tiktoken
 
+# RAG system dependencies
+llama-index>=0.9.0
+llama-index-embeddings-ollama>=0.1.0
+llama-index-llms-ollama>=0.1.0
+llama-index-vector-stores-chroma>=0.1.0
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
 # High-quality PDF to Markdown conversion (local processing only)
 pymupdf4llm>=0.0.5

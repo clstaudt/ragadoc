@@ -6,6 +6,11 @@ A powerful PDF processing system with high-quality text extraction and structure
 
 - **High-Quality Text Extraction**: Uses PyMuPDF4LLM for superior structure preservation
 - **Automatic Structure Detection**: Headers, tables, lists, and formatting automatically detected
+- **RAG System**: Advanced Retrieval-Augmented Generation for large documents
+  - Document chunking with configurable overlap
+  - Vector embeddings using Ollama models
+  - Semantic search and retrieval with ChromaDB
+  - Handles documents of any size without context window issues
 - **LLM/RAG Optimized**: Specifically designed for AI applications
 - **Local Processing**: All processing happens locally, no external service calls
 - **Citation Highlighting**: Smart PDF highlighting for AI-generated citations
@@ -40,9 +45,66 @@ conda env create -f environment.yml
 conda activate ragnarok
 ```
 
+3. **Install Ollama Models for RAG**:
+```bash
+# Required for embeddings
+ollama pull nomic-embed-text
+
+# Optional alternative embedding models
+ollama pull mxbai-embed-large
+ollama pull all-minilm
+
+# LLM models (if not already installed)
+ollama pull llama3.1:8b
+ollama pull mistral:latest
+```
+
 ## Quick Start
 
-### Basic Usage
+### Web Application (Recommended)
+
+```bash
+# Start the web application
+streamlit run app.py
+```
+
+Then:
+1. Upload a PDF document
+2. Enable RAG in the sidebar settings
+3. Ask questions about your document
+
+### RAG System (Programmatic)
+
+```python
+from ragnarok import create_rag_system
+
+# Create RAG system
+rag = create_rag_system(
+    ollama_base_url="http://localhost:11434",
+    embedding_model="nomic-embed-text",
+    chunk_size=512,
+    chunk_overlap=50
+)
+
+# Process document
+with open('document.pdf', 'rb') as f:
+    pdf_bytes = f.read()
+
+# Extract text and process with RAG
+from ragnarok import EnhancedPDFProcessor
+processor = EnhancedPDFProcessor(pdf_bytes)
+text = processor.extract_full_text()
+
+# Process with RAG
+stats = rag.process_document(text, "my_document")
+print(f"Created {stats['total_chunks']} chunks")
+
+# Query the document
+result = rag.query_document("What is this document about?")
+print(result['response'])
+```
+
+### Basic PDF Processing
 
 ```python
 from ragnarok.enhanced_pdf_processor import EnhancedPDFProcessor
@@ -64,6 +126,14 @@ for section_name, content in sections.items():
     print(f"## {section_name}")
     print(content[:200] + "...")
 ```
+
+### Test the RAG System
+
+```bash
+python experiments/test_rag.py
+```
+
+This will test the complete RAG pipeline including dependencies, Ollama connection, and document processing.
 
 ### Test the Extraction
 
@@ -150,6 +220,11 @@ PDF Input → PyMuPDF4LLM → Structured Markdown → Sections/TOC
 ## License
 
 MIT License - see LICENSE file for details.
+
+## Documentation
+
+- **[RAG System Implementation](RAG_IMPLEMENTATION.md)**: Detailed guide to the RAG system, configuration, and troubleshooting
+- **[PDF Extraction Summary](PDF_EXTRACTION_SUMMARY.md)**: Technical details about PDF processing methods
 
 ## Testing
 
