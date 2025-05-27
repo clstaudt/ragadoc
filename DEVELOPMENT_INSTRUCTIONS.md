@@ -5,3 +5,4 @@
 - Debug information belongs into the command line logs, not in the app UI/UX.
 - Always develop a generic solution, do not use content from specific examples in the code
 - Never include content from example documents in the source code. Never leak content from provided examples into test code!
+- If you create new .py files for testing or debugging, place them in the experiments folder. Delete them after they are no longer useful. If they yield meaningful unit tests, integrate them into the test suite.

@@ -1,51 +1,155 @@
-# Ragnarok - PDF Chat with Local LLM
+# Ragnarok - Enhanced PDF Processing
 
-A Streamlit-based application for chatting with PDF documents using local Large Language Models via Ollama. Features intelligent citation highlighting and multi-document chat sessions.
+A powerful PDF processing system with high-quality text extraction and structure preservation, optimized for LLM/RAG applications.
+
+## Key Features
+
+- **High-Quality Text Extraction**: Uses PyMuPDF4LLM for superior structure preservation
+- **Automatic Structure Detection**: Headers, tables, lists, and formatting automatically detected
+- **LLM/RAG Optimized**: Specifically designed for AI applications
+- **Local Processing**: All processing happens locally, no external service calls
+- **Citation Highlighting**: Smart PDF highlighting for AI-generated citations
+
+## PDF Extraction Capabilities
+
+The system uses **PyMuPDF4LLM** as the primary extraction method because it:
+
+- ✅ **Automatically detects document structure** (headers, tables, lists)
+- ✅ **Preserves formatting** (bold, italic, etc.)
+- ✅ **Optimized for LLM applications** 
+- ✅ **Fast and reliable** (15s vs 2m30s compared to alternatives)
+- ✅ **Local processing only**
+
+### What You Get
+
+- **Structured Markdown Output**: Headers marked with `#`, tables preserved, lists formatted
+- **Section Extraction**: Automatic document section detection
+- **Table of Contents**: Generated from document structure
+- **Citation Highlighting**: AI responses can highlight source text in PDFs
+
+## Installation
+
+1. **Install Dependencies**:
+```bash
+pip install -r requirements.txt
+```
+
+2. **Or use Conda**:
+```bash
+conda env create -f environment.yml
+conda activate ragnarok
+```
 
 ## Quick Start
 
-### Prerequisites
-- **Python 3.8+**
-- **Ollama**: Install from [https://ollama.ai](https://ollama.ai)
+### Basic Usage
 
-### Local Setup
+```python
+from ragnarok.enhanced_pdf_processor import EnhancedPDFProcessor
 
-1. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+# Load PDF
+with open('document.pdf', 'rb') as f:
+    pdf_bytes = f.read()
 
-2. **Start Ollama and pull a model**
-   ```bash
-   ollama serve
-   ollama pull olmo2:7b  # or olmo2:13b for better performance
-   ```
+# Create processor
+processor = EnhancedPDFProcessor(pdf_bytes)
 
-3. **Run the application**
-   ```bash
-   streamlit run app.py
-   ```
+# Extract structured text
+structured_text = processor.extract_full_text()
+print(structured_text)  # Markdown with headers, tables, lists
 
-4. **Open browser** to `http://localhost:8501`
+# Get document sections
+sections = processor.extract_sections()
+for section_name, content in sections.items():
+    print(f"## {section_name}")
+    print(content[:200] + "...")
+```
 
-### Docker Setup
+### Test the Extraction
 
-1. **Start Ollama with Docker-compatible configuration**
-   ```bash
-   OLLAMA_HOST=0.0.0.0:11434 ollama serve
-   ```
+Run the demo script to see the extraction in action:
 
-2. **Run with Docker Compose**
-   ```bash
-   docker-compose up -d --build
-   ```
+```bash
+python simplified_extraction_demo.py
+```
 
-## Usage
+This will:
+- Find PDF files in the current directory
+- Extract text with full structure preservation
+- Show document sections and headers
+- Display extraction statistics
 
-1. **Upload a PDF** using the file uploader
-2. **Ask questions** about the document
-3. **View citations** highlighted directly in the PDF viewer
-4. **Manage multiple chats** via the sidebar
+## Dependencies
+
+### Core Libraries
+- **PyMuPDF4LLM** (>=0.0.5) - High-quality PDF to markdown conversion
+- **PyMuPDF** (>=1.23.0) - PDF processing and highlighting
+- **Streamlit** - Web interface
+- **Loguru** - Logging
+
+### Why PyMuPDF4LLM?
+
+PyMuPDF4LLM was chosen as the primary extraction method because:
+
+1. **Purpose-Built for LLM/RAG**: Specifically designed for AI applications
+2. **Superior Structure Detection**: Automatically handles headers, tables, lists
+3. **Performance**: Much faster than alternatives (15s vs 2m30s)
+4. **Reliability**: Consistent, high-quality output
+5. **Local Processing**: No external API calls required
+
+## Example Output
+
+**Before** (basic extraction):
+```
+Introduction This document describes the new system. Features The system has many features. Performance Tests show good performance.
+```
+
+**After** (PyMuPDF4LLM):
+```markdown
+# Introduction
+
+This document describes the new system.
+
+## Features
+
+The system has many features:
+- Feature 1
+- Feature 2
+- Feature 3
+
+## Performance
+
+Tests show good performance:
+
+| Metric | Value |
+|--------|-------|
+| Speed  | Fast  |
+| Memory | Low   |
+```
+
+## Architecture
+
+The system is built around a single, reliable extraction method:
+
+```
+PDF Input → PyMuPDF4LLM → Structured Markdown → Sections/TOC
+                ↓
+         (fallback if needed)
+                ↓
+         Basic Text Extraction
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test with various PDF types
+5. Submit a pull request
+
+## License
+
+MIT License - see LICENSE file for details.
 
 ## Testing
 

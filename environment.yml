@@ -18,4 +18,5 @@ dependencies:
     - PyMuPDF
     - loguru
     - tiktoken
+    - pymupdf4llm
     - -e . 
