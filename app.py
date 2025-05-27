@@ -135,7 +135,12 @@ class ModelManager:
                 # Direct execution - use default ollama client
                 models_info = ollama.list()
                 
-            if 'models' in models_info:
+            # Handle both dict and ListResponse object
+            if hasattr(models_info, 'models'):
+                models_list = models_info.models
+                return [model.model if hasattr(model, 'model') else model.get('model', model.get('name', '')) 
+                       for model in models_list]
+            elif isinstance(models_info, dict) and 'models' in models_info:
                 return [model.get('model', model.get('name', '')) 
                        for model in models_info['models']]
             return []
@@ -170,52 +175,57 @@ class ModelManager:
     
     @staticmethod
     def get_context_length(model_name):
-        """Get the context length for a specific model"""
+        """Get the context length for a specific model - returns None if cannot be determined"""
         model_info = ModelManager.get_model_info(model_name)
         
         # Try to get context length from model parameters first
         if model_info:
             try:
-                # Check in parameters first
-                if 'parameters' in model_info:
-                    params = model_info['parameters']
-                    if 'num_ctx' in params:
-                        return int(params['num_ctx'])
+                # Check in parameters first (handle both dict and object)
+                parameters = None
+                if hasattr(model_info, 'parameters'):
+                    parameters = model_info.parameters
+                elif isinstance(model_info, dict) and 'parameters' in model_info:
+                    parameters = model_info['parameters']
                 
-                # Check in model details/template
-                if 'details' in model_info:
-                    details = model_info['details']
-                    if 'parameter_size' in details:
-                        # Some models have context info in details
-                        pass
+                if parameters:
+                    num_ctx = None
+                    if hasattr(parameters, 'get') and parameters.get('num_ctx'):
+                        num_ctx = parameters['num_ctx']
+                    elif hasattr(parameters, 'num_ctx'):
+                        num_ctx = parameters.num_ctx
+                    elif isinstance(parameters, dict) and 'num_ctx' in parameters:
+                        num_ctx = parameters['num_ctx']
+                    
+                    if num_ctx:
+                        return int(num_ctx)
+                
+                # Check in modelfile for PARAMETER num_ctx
+                modelfile = None
+                if hasattr(model_info, 'modelfile'):
+                    modelfile = model_info.modelfile
+                elif isinstance(model_info, dict) and 'modelfile' in model_info:
+                    modelfile = model_info['modelfile']
+                
+                if modelfile:
+                    import re
+                    ctx_match = re.search(r'PARAMETER\s+num_ctx\s+(\d+)', modelfile, re.IGNORECASE)
+                    if ctx_match:
+                        return int(ctx_match.group(1))
+                
+                # Get model family for fallback detection
+                family = None
+                if hasattr(model_info, 'details') and hasattr(model_info.details, 'family'):
+                    family = model_info.details.family
+                elif isinstance(model_info, dict) and 'details' in model_info and 'family' in model_info['details']:
+                    family = model_info['details']['family']
                         
             except Exception as e:
                 logger.warning(f"Error parsing model info for {model_name}: {e}")
         
-        # Fallback to default context lengths for common model families
-        try:
-            model_lower = model_name.lower()
-            if 'llama3.1' in model_lower or 'llama-3.1' in model_lower:
-                return 131072  # 128k context
-            elif 'llama3' in model_lower or 'llama-3' in model_lower:
-                return 8192    # 8k context
-            elif 'llama2' in model_lower or 'llama-2' in model_lower:
-                return 4096    # 4k context
-            elif 'mistral' in model_lower:
-                return 32768   # 32k context for most Mistral models
-            elif 'codellama' in model_lower:
-                return 16384   # 16k context
-            elif 'deepseek' in model_lower:
-                return 32768   # 32k context
-            elif 'qwen' in model_lower:
-                return 32768   # 32k context
-            else:
-                # Default fallback
-                return 2048
-                
-        except Exception as e:
-            logger.warning(f"Error parsing context length for {model_name}: {e}")
-            return 2048  # Conservative default
+        # Return None if we truly cannot determine it
+        logger.warning(f"Could not determine context length for {model_name} - no explicit parameter found and unknown model family")
+        return None
 
 class ContextChecker:
     """Utility class for checking context window compatibility"""
@@ -247,24 +257,76 @@ class ContextChecker:
         return max(char_based, word_based)
     
     @staticmethod
-    def check_document_fits_context(document_text, model_name, system_prompt_length=2000):
+    def check_document_fits_context(document_text, model_name, user_prompt=""):
         """Check if document + system prompt fits in model's context window"""
         if not document_text or not model_name:
             return True, None, None
         
         context_length = ModelManager.get_context_length(model_name)
         if context_length is None:
-            return True, None, "Could not determine model context length"
+            return True, None, f"Cannot determine context length for model '{model_name}'. Context checking skipped."
         
-        doc_tokens = ContextChecker.estimate_token_count(document_text)
-        total_tokens = doc_tokens + system_prompt_length  # Reserve space for system prompt and user query
+        # Generate the actual system prompt to measure its real size
+        system_prompt = f"""You are a document analysis assistant. Answer questions ONLY using information from this document:
+
+    DOCUMENT CONTENT:
+    {document_text}
+
+    INITIAL CHECK:
+    First, verify you have received document content above. If the document is empty or missing, respond: "Error: No document content received, cannot proceed."
+
+    RESPONSE RULES:
+    Choose ONE approach based on whether the document contains relevant information:
+
+    1. **IF ANSWERABLE**: Provide a complete answer with citations
+    - Every factual claim must have a citation [1], [2], etc.
+    - List citations at the end using this exact format:
+        [1] "exact quote from document"
+        [2] "another exact quote"
+    
+    2. **IF NOT ANSWERABLE**: Decline to answer
+    - State: "I cannot answer this based on the document"
+    - Do NOT include any citations when declining
+    - Do not attempt to answer the question with your own knowledge.    
+
+    CITATION GUIDELINES:
+    - Use verbatim quotes in their original language (never translate)
+    - Quote meaningful phrases (3-8 words) that provide context
+    - Include descriptive context around numbers/measurements
+    - Each citation on its own line
+
+    LANGUAGE RULES:
+    - Respond in the user's language
+    - Keep citations in the document's original language
+
+    EXAMPLE - Answerable:
+    Q: Does he have medical experience?
+    A: Yes, he has experience in medical applications. [1]
+
+    [1] "project development for AI applications: medical data mining & AI"
+
+    EXAMPLE - Not answerable:
+    Q: What's his favorite language?
+    A: I cannot answer this based on the document.
+    """
+        
+        # Measure actual token counts
+        system_tokens = ContextChecker.estimate_token_count(system_prompt)
+        user_tokens = ContextChecker.estimate_token_count(user_prompt)
+        
+        # Reserve space for response (conservative estimate)
+        response_reserve = 1000
+        
+        total_tokens = system_tokens + user_tokens + response_reserve
         
         fits = total_tokens <= context_length
         usage_percent = (total_tokens / context_length) * 100
         
         return fits, {
             'context_length': context_length,
-            'document_tokens': doc_tokens,
+            'system_tokens': system_tokens,
+            'user_tokens': user_tokens,
+            'response_reserve': response_reserve,
             'total_estimated_tokens': total_tokens,
             'usage_percent': usage_percent,
             'available_tokens': context_length - total_tokens
@@ -450,6 +512,13 @@ def render_document_upload(chat_manager):
                         else:
                             st.success(f"✅ **Good fit** - Uses {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
                             st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
+                        
+                        # Show breakdown in expander
+                        with st.expander("📊 Token Breakdown", expanded=False):
+                            st.write(f"**System prompt:** ~{context_info['system_tokens']:,} tokens")
+                            st.write(f"**Response reserve:** ~{context_info['response_reserve']:,} tokens")
+                            st.write(f"**Total estimated:** ~{context_info['total_estimated_tokens']:,} tokens")
+                            st.write(f"**Context limit:** {context_info['context_length']:,} tokens")
                 else:
                     st.info("💡 Select a model to check context window compatibility")
                 
@@ -507,7 +576,7 @@ def render_chat_interface(chat_manager):
                     st.progress(progress_value, text=f"Context Usage: {usage_percent:.1f}%")
                     
                     # Show brief summary
-                    st.caption(f"~{context_info['document_tokens']:,} tokens / {context_info['context_length']:,} limit")
+                    st.caption(f"~{context_info['system_tokens']:,} tokens / {context_info['context_length']:,} limit")
             
             # Show PDF and extracted text side by side
             if chat.get("document_content") and chat.get("document_text"):
@@ -754,7 +823,8 @@ def main():
             
             if error:
                 st.markdown("---")
-                st.warning(f"⚠️ Could not check context compatibility: {error}")
+                st.info(f"ℹ️ {error}")
+                st.caption("Context checking requires model configuration that includes context window size.")
             elif context_info:
                 usage_percent = context_info['usage_percent']
                 
