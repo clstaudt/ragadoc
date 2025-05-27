@@ -1,5 +1,6 @@
 """
 Simplified PDF processor with highlighting capabilities using PyMuPDF
+Enhanced with PyMuPDF4LLM and Marker for high-quality markdown extraction
 """
 
 import streamlit as st
@@ -7,7 +8,11 @@ import fitz  # PyMuPDF
 import re
 from loguru import logger
 from typing import List, Tuple, Dict, Optional
+import tempfile
+import os
 
+# High-quality markdown extraction library
+import pymupdf4llm
 
 class EnhancedPDFProcessor:
     """Simplified PDF processor with highlighting capabilities"""
@@ -17,12 +22,260 @@ class EnhancedPDFProcessor:
         self.doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
     def extract_full_text(self) -> str:
-        """Extract full text from PDF"""
+        """Extract full text from PDF with high-quality structure preservation using PyMuPDF4LLM"""
+        try:
+            # Save PDF bytes to temporary file for PyMuPDF4LLM
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
+                temp_file.write(self.pdf_bytes)
+                temp_path = temp_file.name
+            
+            try:
+                # Try method 1: Auto-detected headers with optimized parameters
+                markdown_text = self._extract_with_auto_headers(temp_path)
+                if markdown_text and len(markdown_text.strip()) > 100:
+                    logger.info("Successfully extracted text using auto-header detection")
+                    return markdown_text.strip()
+                
+                # Try method 2: TOC-based headers
+                markdown_text = self._extract_with_toc_headers(temp_path)
+                if markdown_text and len(markdown_text.strip()) > 100:
+                    logger.info("Successfully extracted text using TOC-based headers")
+                    return markdown_text.strip()
+                
+                # Try method 3: No header detection (plain text with structure)
+                markdown_text = self._extract_with_no_headers(temp_path)
+                if markdown_text and len(markdown_text.strip()) > 100:
+                    logger.info("Successfully extracted text with no header detection")
+                    return markdown_text.strip()
+                
+                logger.warning("All PyMuPDF4LLM methods produced insufficient text, falling back to basic extraction")
+                return self._extract_basic_fallback()
+                
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+                    
+        except Exception as e:
+            logger.warning(f"PyMuPDF4LLM extraction failed: {e}, falling back to basic extraction")
+            return self._extract_basic_fallback()
+    
+    def _extract_with_auto_headers(self, temp_path: str) -> str:
+        """Extract with automatic header detection based on font sizes"""
+        try:
+            return pymupdf4llm.to_markdown(
+                temp_path,
+                # Page processing
+                page_chunks=False,
+                
+                # Text quality settings
+                force_text=True,
+                ignore_code=False,
+                
+                # Table detection - crucial for structure
+                table_strategy='lines',  # More aggressive table detection
+                
+                # Image handling
+                write_images=False,
+                ignore_images=False,
+                ignore_graphics=False,
+                image_size_limit=0.05,
+                
+                # Layout and margins
+                margins=10,
+                
+                # Header detection - auto-detect based on font sizes
+                hdr_info=None,  # This triggers automatic font size analysis
+                
+                # Performance settings
+                graphics_limit=5000,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.debug(f"Auto-header extraction failed: {e}")
+            return ""
+    
+    def _extract_with_toc_headers(self, temp_path: str) -> str:
+        """Extract using Table of Contents for header detection"""
+        try:
+            # Open document to check for TOC
+            doc = fitz.open(temp_path)
+            toc = doc.get_toc()
+            doc.close()
+            
+            if toc:  # Only use TOC headers if TOC exists
+                toc_headers = pymupdf4llm.TocHeaders(temp_path)
+                return pymupdf4llm.to_markdown(
+                    temp_path,
+                    page_chunks=False,
+                    force_text=True,
+                    ignore_code=False,
+                    table_strategy='lines',
+                    write_images=False,
+                    ignore_images=False,
+                    ignore_graphics=False,
+                    image_size_limit=0.05,
+                    margins=10,
+                    hdr_info=toc_headers,  # Use TOC-based headers
+                    graphics_limit=5000,
+                    show_progress=False,
+                )
+            else:
+                return ""  # No TOC available
+        except Exception as e:
+            logger.debug(f"TOC-header extraction failed: {e}")
+            return ""
+    
+    def _extract_with_no_headers(self, temp_path: str) -> str:
+        """Extract with no header detection - plain structured text"""
+        try:
+            return pymupdf4llm.to_markdown(
+                temp_path,
+                page_chunks=False,
+                force_text=True,
+                ignore_code=False,
+                table_strategy='lines',
+                write_images=False,
+                ignore_images=False,
+                ignore_graphics=False,
+                image_size_limit=0.05,
+                margins=10,
+                hdr_info=False,  # Disable header detection completely
+                graphics_limit=5000,
+                show_progress=False,
+            )
+        except Exception as e:
+            logger.debug(f"No-header extraction failed: {e}")
+            return ""
+    
+    def _extract_basic_fallback(self) -> str:
+        """Basic text extraction fallback (only used if PyMuPDF4LLM fails)"""
         full_text = ""
         for page_num in range(self.doc.page_count):
             page = self.doc[page_num]
             full_text += page.get_text() + "\n"
         return full_text
+    
+
+    
+
+    
+    def extract_table_of_contents(self) -> List[Dict[str, any]]:
+        """Extract table of contents/outline from PDF"""
+        toc = []
+        try:
+            # Try to get built-in TOC first
+            outline = self.doc.get_toc()
+            if outline:
+                for item in outline:
+                    level, title, page = item
+                    toc.append({
+                        'level': level,
+                        'title': title.strip(),
+                        'page': page,
+                        'type': 'outline'
+                    })
+            else:
+                # Extract TOC from document structure
+                toc = self._extract_structural_toc()
+        except Exception as e:
+            logger.warning(f"Could not extract TOC: {e}")
+            toc = self._extract_structural_toc()
+        
+        return toc
+    
+    def _extract_structural_toc(self) -> List[Dict[str, any]]:
+        """Extract TOC from high-quality markdown structure"""
+        toc = []
+        
+        # Use high-quality extraction to get structured text
+        markdown_text = self.extract_full_text()
+        lines = markdown_text.split('\n')
+        
+        for line_num, line in enumerate(lines):
+            line = line.strip()
+            
+            # PyMuPDF4LLM already detected headings with # markers
+            if re.match(r'^#{1,6}\s+', line):
+                # Count the number of # to determine level
+                level = len(line) - len(line.lstrip('#'))
+                title = re.sub(r'^#{1,6}\s+', '', line).strip()
+                
+                toc.append({
+                    'level': level,
+                    'title': title,
+                    'page': 1,  # Approximate page (would need more complex logic for exact page)
+                    'type': 'structural'
+                })
+        
+        return toc
+    
+    def _is_toc_entry(self, text: str) -> bool:
+        """Check if text looks like a table of contents entry"""
+        # Common TOC patterns
+        toc_patterns = [
+            r'^\d+\.?\s+.+\s+\d+$',  # "1. Title 5" or "1 Title 5"
+            r'^.+\.{3,}\s*\d+$',     # "Title....5"
+            r'^\d+\.\d+\s+.+',       # "1.1 Subtitle"
+            r'^(Chapter|Section|Part)\s+\d+',  # "Chapter 1"
+        ]
+        
+        for pattern in toc_patterns:
+            if re.match(pattern, text.strip()):
+                return True
+        
+        return False
+    
+    def extract_sections(self) -> Dict[str, str]:
+        """Extract document sections as separate text blocks using high-quality extraction"""
+        sections = {}
+        current_section = "Introduction"
+        current_text = ""
+        
+        # Use high-quality markdown extraction which already handles structure
+        full_text = self.extract_full_text()
+        lines = full_text.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Check if this is a heading (starts with #) - PyMuPDF4LLM already detected these
+            if re.match(r'^#{1,6}\s+', line):
+                # Save previous section
+                if current_text.strip():
+                    sections[current_section] = current_text.strip()
+                
+                # Start new section
+                current_section = re.sub(r'^#{1,6}\s+', '', line).strip()
+                current_text = ""
+            else:
+                # Add to current section
+                if line:
+                    current_text += line + "\n"
+        
+        # Save final section
+        if current_text.strip():
+            sections[current_section] = current_text.strip()
+        
+        return sections
+    
+    def get_document_metadata(self) -> Dict[str, any]:
+        """Extract document metadata and structure information"""
+        metadata = {
+            'page_count': self.doc.page_count,
+            'title': self.doc.metadata.get('title', 'Unknown'),
+            'author': self.doc.metadata.get('author', 'Unknown'),
+            'subject': self.doc.metadata.get('subject', ''),
+            'creator': self.doc.metadata.get('creator', ''),
+            'producer': self.doc.metadata.get('producer', ''),
+            'creation_date': self.doc.metadata.get('creationDate', ''),
+            'modification_date': self.doc.metadata.get('modDate', ''),
+            'table_of_contents': self.extract_table_of_contents(),
+            'sections': list(self.extract_sections().keys()),
+            'has_outline': bool(self.doc.get_toc()),
+        }
+        
+        return metadata
 
     def create_ai_response_highlights(
         self, ai_response: str, original_text: str

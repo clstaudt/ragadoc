@@ -1,3 +1,4 @@
+# Core dependencies
 streamlit
 ollama
 streamlit-pdf-viewer
@@ -9,3 +10,6 @@ pytest-cov
 pillow
 loguru
 tiktoken
+
+# High-quality PDF to Markdown conversion (local processing only)
+pymupdf4llm>=0.0.5
