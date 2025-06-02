@@ -376,34 +376,13 @@ class EnhancedPDFProcessor:
             all_quotes = list(citation_quotes.values())
             
             # Show found citations with improved display
-            st.caption(f"✅ Found {len(citation_quotes)} citation(s)")
+            st.caption(f"Found {len(citation_quotes)} citation(s)")
             with st.expander("Found Citations", expanded=False):
                 for num, quote in citation_quotes.items():
                     # Clean display without technical details
                     st.markdown(f"**[{num}]** \"{quote}\"")
                     if len(quote) > 200:  # Add some spacing for very long quotes
                         st.markdown("---")
-            
-            # IMPROVED: Pre-check if quotes are likely to be found before creating highlighted PDF
-            likely_matches = []
-            for quote in all_quotes:
-                # Simple check if quote text appears in document (case-insensitive)
-                if quote.lower() in original_text.lower():
-                    likely_matches.append(quote)
-                else:
-                    # Check if key phrases from the quote appear
-                    words = quote.split()
-                    if len(words) >= 3:
-                        for i in range(len(words) - 2):
-                            phrase = " ".join(words[i:i+3])
-                            if len(phrase) > 10 and phrase.lower() in original_text.lower():
-                                likely_matches.append(quote)
-                                break
-            
-            if likely_matches:
-                st.info(f"🎯 {len(likely_matches)} of {len(all_quotes)} citations likely to be highlighted in document")
-            else:
-                st.warning("⚠️ Citations may not be found exactly as written in the document. The highlighter will try to find related content.")
             
             highlighted_pdf_bytes, first_highlight_page = self._create_highlighted_pdf(
                 all_quotes
@@ -435,9 +414,6 @@ class EnhancedPDFProcessor:
 
                 if first_highlight_page:
                     viewer_params["scroll_to_page"] = first_highlight_page
-                    st.success(f"📄 Scrolled to page {first_highlight_page} with first highlight")
-                else:
-                    st.info("📄 No highlights found - showing original document")
 
                 pdf_viewer(**viewer_params)
 
@@ -641,59 +617,54 @@ class EnhancedPDFProcessor:
         highlighted_doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
         first_highlight_page = None
 
-        # PERFORMANCE: Show progress for user feedback during highlighting
+        # PERFORMANCE: Show simple spinner during highlighting
         progress_placeholder = st.empty()
-        total_operations = len(search_terms) * highlighted_doc.page_count
-        current_operation = 0
 
         try:
-            for term_idx, term in enumerate(search_terms):
-                with progress_placeholder.container():
-                    st.info(f"🔍 Highlighting citation {term_idx + 1}/{len(search_terms)}: \"{term[:50]}{'...' if len(term) > 50 else ''}\"")
-                
-                # PERFORMANCE: Early termination if we already found highlights
-                found_highlight_for_term = False
-                
-                for page_num in range(highlighted_doc.page_count):
-                    current_operation += 1
-                    
-                    # PERFORMANCE: Skip remaining pages if we found good highlights for this term
-                    if found_highlight_for_term and first_highlight_page is not None:
-                        continue
+            with progress_placeholder.container():
+                with st.spinner("Highlighting citations in document..."):
+                    for term_idx, term in enumerate(search_terms):
+                        # PERFORMANCE: Early termination if we already found highlights
+                        found_highlight_for_term = False
                         
-                    page = highlighted_doc[page_num]
+                        for page_num in range(highlighted_doc.page_count):
+                            # PERFORMANCE: Skip remaining pages if we found good highlights for this term
+                            if found_highlight_for_term and first_highlight_page is not None:
+                                continue
+                                
+                            page = highlighted_doc[page_num]
 
-                    # Try exact search first for the complete term
-                    instances = page.search_for(term, quads=True)
+                            # Try exact search first for the complete term
+                            instances = page.search_for(term, quads=True)
 
-                    if instances:
-                        # Found exact match - highlight it
-                        for inst in instances:
-                            highlight = page.add_highlight_annot(inst)
-                            highlight.set_colors(stroke=(1, 1, 0))  # Yellow highlight
-                            highlight.update()
-                            if first_highlight_page is None:
-                                first_highlight_page = page_num + 1
-                        found_highlight_for_term = True
-                    else:
-                        # PERFORMANCE: Only try smart highlighting if no exact match and term is substantial
-                        if len(term.split()) >= 5:  # Increased threshold to reduce unnecessary processing
-                            found = self._smart_highlight_long_quote_fast(page, term)
-                            if found:
-                                found_highlight_for_term = True
-                                if first_highlight_page is None:
-                                    first_highlight_page = page_num + 1
-                        elif len(term.split()) >= 3:  # For shorter terms, just try case-insensitive
-                            # For short terms, try case-insensitive search only
-                            instances_case_insensitive = page.search_for(term, quads=True, flags=fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE)
-                            if instances_case_insensitive:
-                                for inst in instances_case_insensitive:
+                            if instances:
+                                # Found exact match - highlight it
+                                for inst in instances:
                                     highlight = page.add_highlight_annot(inst)
-                                    highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for case-insensitive matches
+                                    highlight.set_colors(stroke=(1, 1, 0))  # Yellow highlight
                                     highlight.update()
+                                    if first_highlight_page is None:
+                                        first_highlight_page = page_num + 1
                                 found_highlight_for_term = True
-                                if first_highlight_page is None:
-                                    first_highlight_page = page_num + 1
+                            else:
+                                # PERFORMANCE: Only try smart highlighting if no exact match and term is substantial
+                                if len(term.split()) >= 5:  # Increased threshold to reduce unnecessary processing
+                                    found = self._smart_highlight_long_quote_fast(page, term)
+                                    if found:
+                                        found_highlight_for_term = True
+                                        if first_highlight_page is None:
+                                            first_highlight_page = page_num + 1
+                                elif len(term.split()) >= 3:  # For shorter terms, just try case-insensitive
+                                    # For short terms, try case-insensitive search only
+                                    instances_case_insensitive = page.search_for(term, quads=True, flags=fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE)
+                                    if instances_case_insensitive:
+                                        for inst in instances_case_insensitive:
+                                            highlight = page.add_highlight_annot(inst)
+                                            highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for case-insensitive matches
+                                            highlight.update()
+                                        found_highlight_for_term = True
+                                        if first_highlight_page is None:
+                                            first_highlight_page = page_num + 1
 
             # Clear progress indicator
             progress_placeholder.empty()
