@@ -153,4 +153,108 @@ class TestAIResponseHighlights:
         assert processor._fuzzy_text_match("machine learning algorithms performed", document_text)
         
         # Test no match
-        assert not processor._fuzzy_text_match("quantum computing", document_text) 
+        assert not processor._fuzzy_text_match("quantum computing", document_text)
+
+
+class TestImprovedCitationExtraction:
+    """Test the improved citation extraction logic"""
+    
+    def test_preserves_context_for_medium_quotes(self):
+        """Test that medium-length quotes preserve their full context"""
+        from ragnarok import EnhancedPDFProcessor
+        import fitz
+        
+        # Create a test PDF
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((50, 100), "The system achieved 85% accuracy with improved algorithms and better data processing.")
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        
+        processor = EnhancedPDFProcessor(pdf_bytes)
+        
+        # Test response with medium-length quote that should be preserved
+        ai_response = 'The results show that [1] "achieved 85% accuracy with improved algorithms and better data" according to the study.'
+        citations = processor._extract_quotes_from_ai_response(ai_response, "What was the accuracy?")
+        
+        # Should preserve the full quote since it's under 30 words
+        assert len(citations) == 1
+        assert "achieved 85% accuracy with improved algorithms and better data" in citations[1]
+        assert len(citations[1].split()) > 8  # Should be substantial
+    
+    def test_avoids_over_trimming_contextual_quotes(self):
+        """Test that quotes with important context are not over-trimmed"""
+        from ragnarok import EnhancedPDFProcessor
+        import fitz
+        
+        # Create a test PDF
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((50, 100), "Performance increased by 50% compared to the previous version when using the new optimization techniques.")
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        
+        processor = EnhancedPDFProcessor(pdf_bytes)
+        
+        # Test response that might have been over-trimmed before
+        ai_response = 'The document states [1] "Performance increased by 50% compared to the previous version" in the results section.'
+        citations = processor._extract_quotes_from_ai_response(ai_response, "How much did performance improve?")
+        
+        # Should preserve the full contextual quote, not just "50%"
+        assert len(citations) == 1
+        assert "Performance increased by 50% compared to the previous version" in citations[1]
+        assert "50%" in citations[1]  # Should include the percentage
+        assert len(citations[1].split()) >= 8  # Should have substantial context
+    
+    def test_only_trims_very_long_quotes(self):
+        """Test that only extremely long quotes (>30 words) get trimmed"""
+        from ragnarok import EnhancedPDFProcessor
+        import fitz
+        
+        # Create a test PDF
+        doc = fitz.open()
+        page = doc.new_page()
+        long_text = "This is a very long sentence that contains more than thirty words and should potentially be trimmed by the new logic because it exceeds the threshold for automatic processing and trimming that we have established in our improved citation system."
+        page.insert_text((50, 100), long_text)
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        
+        processor = EnhancedPDFProcessor(pdf_bytes)
+        
+        # Test with a very long quote
+        ai_response = f'The document explains that [1] "{long_text}" in great detail.'
+        citations = processor._extract_quotes_from_ai_response(ai_response, "What does it explain?")
+        
+        # Should be trimmed since it's over 30 words
+        assert len(citations) == 1
+        original_word_count = len(long_text.split())
+        extracted_word_count = len(citations[1].split())
+        
+        # Should be shorter than original but still substantial
+        assert extracted_word_count < original_word_count
+        assert extracted_word_count >= 8  # Should still be meaningful
+    
+    def test_rejects_very_short_terms_for_highlighting(self):
+        """Test that very short terms don't go through partial matching"""
+        from ragnarok import EnhancedPDFProcessor
+        import fitz
+        
+        # Create a test PDF
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((50, 100), "The cat sat on the mat with 50% efficiency.")
+        pdf_bytes = doc.tobytes()
+        doc.close()
+        
+        processor = EnhancedPDFProcessor(pdf_bytes)
+        
+        # Simulate the improved _smart_highlight_long_quote logic
+        # Very short terms should return False without trying partial matching
+        result = processor._smart_highlight_long_quote(page, "cat")  # 1 word
+        assert result == False  # Should not highlight single words
+        
+        result = processor._smart_highlight_long_quote(page, "50%")  # Very short
+        assert result == False  # Should not highlight isolated percentages
+        
+        result = processor._smart_highlight_long_quote(page, "the cat sat")  # 3 words
+        assert result == False  # Should not highlight very short phrases 

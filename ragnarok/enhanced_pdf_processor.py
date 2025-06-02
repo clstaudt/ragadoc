@@ -216,7 +216,7 @@ class EnhancedPDFProcessor:
         toc_patterns = [
             r'^\d+\.?\s+.+\s+\d+$',  # "1. Title 5" or "1 Title 5"
             r'^.+\.{3,}\s*\d+$',     # "Title....5"
-            r'^\d+\.\d+\s+.+',       # "1.1 Subtitle"
+            r'\d+\.\d+\s+.+',       # "1.1 Subtitle"
             r'^(Chapter|Section|Part)\s+\d+',  # "Chapter 1"
         ]
         
@@ -351,12 +351,12 @@ class EnhancedPDFProcessor:
         # Extract quotes from AI response
         citation_quotes = self._extract_quotes_from_ai_response(ai_response, user_question)
 
-        # Log debug information instead of showing in UI
+        # IMPROVED: Better logging and user feedback
         if not citation_quotes:
             logger.debug("No citations found, attempting pattern matching")
             logger.debug(f"AI Response (first 500 chars): {ai_response[:500]}")
             
-            # Log what patterns we tried
+            # Log what patterns we tried for debugging
             patterns = [
                 (r'\[(\d+)\]\s*"([^"]+)"', "Pattern 1: [1] \"quote\""),
                 (r'\[(\d+)\]:\s*"([^"]+)"', "Pattern 2: [1]: \"quote\""),
@@ -375,11 +375,14 @@ class EnhancedPDFProcessor:
         if citation_quotes:
             all_quotes = list(citation_quotes.values())
             
-            # Show found citations
-            st.caption(f"✅ Found {len(citation_quotes)} citation(s)")
+            # Show found citations with improved display
+            st.caption(f"Found {len(citation_quotes)} citation(s)")
             with st.expander("Found Citations", expanded=False):
                 for num, quote in citation_quotes.items():
-                    st.text(f"[{num}] \"{quote[:100]}{'...' if len(quote) > 100 else ''}\"")
+                    # Clean display without technical details
+                    st.markdown(f"**[{num}]** \"{quote}\"")
+                    if len(quote) > 200:  # Add some spacing for very long quotes
+                        st.markdown("---")
             
             highlighted_pdf_bytes, first_highlight_page = self._create_highlighted_pdf(
                 all_quotes
@@ -417,6 +420,22 @@ class EnhancedPDFProcessor:
             return len(citation_quotes)
         else:
             st.caption("💬 No citations found in response")
+            # IMPROVED: Provide helpful feedback about citation format
+            with st.expander("💡 Citation Format Help", expanded=False):
+                st.markdown("""
+                **For better citation highlighting, encourage the AI to use this format:**
+                
+                ```
+                [1] "exact quote from document"
+                [2] "another exact quote from document"
+                ```
+                
+                **Tips for better highlighting:**
+                - Quotes should be at least 4-5 words long
+                - Include enough context around key information
+                - Use verbatim text from the document
+                - Avoid very short snippets like single numbers or words
+                """)
             return 0
 
     def _extract_quotes_from_ai_response(self, ai_response: str, user_question: str = "") -> Dict[int, str]:
@@ -430,12 +449,13 @@ class EnhancedPDFProcessor:
         for match in matches1:
             citation_num = int(match[0])
             quote_text = match[1].strip()
-            # For citation highlighting, preserve the full quote text
-            # Only use focused extraction for very long quotes (>20 words)
-            if len(quote_text.split()) > 20:
+            # IMPROVED: Be much more conservative about trimming quotes
+            # Only trim if the quote is extremely long (>30 words) to preserve context
+            if len(quote_text.split()) > 30:
                 focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
                 citation_quotes[citation_num] = focused_quote
             else:
+                # Preserve the full quote to maintain context
                 citation_quotes[citation_num] = quote_text
 
         # Pattern 2: [1]: "exact quote" - legacy format with colon (anywhere in line)
@@ -446,9 +466,8 @@ class EnhancedPDFProcessor:
             for match in matches2:
                 citation_num = int(match[0])
                 quote_text = match[1].strip()
-                # For citation highlighting, preserve the full quote text
-                # Only use focused extraction for very long quotes (>20 words)
-                if len(quote_text.split()) > 20:
+                # IMPROVED: Be much more conservative about trimming quotes
+                if len(quote_text.split()) > 30:
                     focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
                     citation_quotes[citation_num] = focused_quote
                 else:
@@ -461,9 +480,8 @@ class EnhancedPDFProcessor:
             
             for i, quote_text in enumerate(matches3, 1):
                 quote_text = quote_text.strip()
-                # For citation highlighting, preserve the full quote text
-                # Only use focused extraction for very long quotes (>20 words)
-                if len(quote_text.split()) > 20:
+                # IMPROVED: Be much more conservative about trimming quotes
+                if len(quote_text.split()) > 30:
                     focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
                     citation_quotes[i] = focused_quote
                 else:
@@ -477,9 +495,8 @@ class EnhancedPDFProcessor:
             for i, quote_text in enumerate(matches3b, 1):
                 if len(quote_text.strip()) > 15:  # Only substantial quotes
                     quote_text = quote_text.strip()
-                    # For citation highlighting, preserve the full quote text
-                    # Only use focused extraction for very long quotes (>20 words)
-                    if len(quote_text.split()) > 20:
+                    # IMPROVED: Be much more conservative about trimming quotes
+                    if len(quote_text.split()) > 30:
                         focused_quote = self._extract_focused_quote(quote_text, ai_response, user_question)
                         citation_quotes[i] = focused_quote
                     else:
@@ -494,9 +511,8 @@ class EnhancedPDFProcessor:
                 # Only use if it looks like a substantial quote
                 cleaned = quote_text.strip()
                 if len(cleaned) > 15 and not cleaned.startswith('http'):
-                    # For citation highlighting, preserve the full quote text
-                    # Only use focused extraction for very long quotes (>20 words)
-                    if len(cleaned.split()) > 20:
+                    # IMPROVED: Be much more conservative about trimming quotes
+                    if len(cleaned.split()) > 30:
                         focused_quote = self._extract_focused_quote(cleaned, ai_response, user_question)
                         citation_quotes[i] = focused_quote
                     else:
@@ -506,8 +522,8 @@ class EnhancedPDFProcessor:
 
     def _extract_focused_quote(self, quote_text: str, ai_response: str, user_question: str = "") -> str:
         """Extract the most relevant part of a long quote based on the question context"""
-        # If quote is short enough, return as-is
-        if len(quote_text.split()) <= 10:
+        # IMPROVED: Only process extremely long quotes (>30 words) to preserve context
+        if len(quote_text.split()) <= 30:
             return quote_text
             
         # Try to identify what the user is asking about from both the question and AI response
@@ -536,8 +552,9 @@ class EnhancedPDFProcessor:
             best_segment = quote_text  # fallback
             best_score = 0
             
-            # Try different segment sizes, prioritizing meaningful phrases
-            for segment_size in [3, 5, 7, 10]:
+            # IMPROVED: Try larger segment sizes first to preserve more context
+            # Prefer segments of 10-20 words to maintain readability
+            for segment_size in [20, 15, 12, 10, 8]:
                 if segment_size >= len(words):
                     continue
                     
@@ -566,37 +583,18 @@ class EnhancedPDFProcessor:
                         best_score = score
                         best_segment = segment
             
-            # If we found a good focused segment, use it
-            if best_score > 0 and len(best_segment.split()) < len(words) * 0.7:
+            # IMPROVED: Only use focused segment if it's substantially better and still meaningful
+            # Require higher score threshold and ensure it's not too short compared to original
+            if best_score > 2 and len(best_segment.split()) >= 8 and len(best_segment.split()) < len(words) * 0.8:
                 return best_segment
         
-        # If no good focused segment found, try to extract key information patterns
-        # Look for percentage patterns with context (this is key for the "50%" issue)
-        percentage_matches = re.findall(r'\w*\s*\d+%\s*\w*', quote_text)
-        if percentage_matches:
-            for match in percentage_matches:
-                if len(match.strip()) > 3:  # Must have some context
-                    return match.strip()
-        
-        # Look for comparative patterns (6 times faster, etc.)
-        comparative_matches = re.findall(r'\d+\s+times\s+\w+|\w+\s+\d+\s+times', quote_text)
-        if comparative_matches:
-            for match in comparative_matches:
-                return match.strip()
-        
-        # Look for time patterns with context
-        time_matches = re.findall(r'\w*\s*\d{1,2}:\d{2}\s*\w*', quote_text)
-        if time_matches:
-            for match in time_matches:
-                if len(match.strip()) > 5:  # Must have some context
-                    return match.strip()
-        
-        # If still too long, try to find the most meaningful part
-        # Look for sentences with numbers or key information
+        # IMPROVED: If no good focused segment found, try to extract meaningful sentences instead of fragments
+        # Look for complete sentences that contain key information
         sentences = re.split(r'[.!?]', quote_text)
         for sentence in sentences:
             sentence = sentence.strip()
-            if len(sentence.split()) <= 12 and (
+            # IMPROVED: Look for complete, meaningful sentences (8-25 words)
+            if 8 <= len(sentence.split()) <= 25 and (
                 re.search(r'\d+%', sentence) or  # Contains percentage
                 re.search(r'\d+\s+times', sentence) or  # Contains "X times"
                 re.search(r'\d{1,2}:\d{2}', sentence) or  # Contains time
@@ -604,73 +602,93 @@ class EnhancedPDFProcessor:
             ):
                 return sentence
         
-        # Final fallback - just take the first part
+        # IMPROVED: Final fallback - take a larger, more meaningful portion
+        # Take first 20 words instead of 15 to preserve more context
         words = quote_text.split()
-        if len(words) > 15:
-            return " ".join(words[:15]) + "..."
+        if len(words) > 25:
+            return " ".join(words[:20]) + "..."
             
         return quote_text
 
     def _create_highlighted_pdf(
         self, search_terms: List[str]
     ) -> Tuple[bytes, Optional[int]]:
-        """Create highlighted PDF with smart highlighting"""
+        """Create highlighted PDF with optimized performance"""
         highlighted_doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
         first_highlight_page = None
 
+        # PERFORMANCE: Show simple spinner during highlighting
+        progress_placeholder = st.empty()
+
         try:
-            for page_num in range(highlighted_doc.page_count):
-                page = highlighted_doc[page_num]
+            with progress_placeholder.container():
+                with st.spinner("Highlighting citations in document..."):
+                    for term_idx, term in enumerate(search_terms):
+                        # PERFORMANCE: Early termination if we already found highlights
+                        found_highlight_for_term = False
+                        
+                        for page_num in range(highlighted_doc.page_count):
+                            # PERFORMANCE: Skip remaining pages if we found good highlights for this term
+                            if found_highlight_for_term and first_highlight_page is not None:
+                                continue
+                                
+                            page = highlighted_doc[page_num]
 
-                for term in search_terms:
-                    # Try exact search first for the complete term
-                    instances = page.search_for(term, quads=True)
+                            # Try exact search first for the complete term
+                            instances = page.search_for(term, quads=True)
 
-                    if instances:
-                        # Found exact match - highlight it
-                        for inst in instances:
-                            highlight = page.add_highlight_annot(inst)
-                            highlight.set_colors(stroke=(1, 1, 0))  # Yellow highlight
-                            highlight.update()
-                            if first_highlight_page is None:
-                                first_highlight_page = page_num + 1
-                    else:
-                        # No exact match found - try smart highlighting for longer quotes
-                        if len(term.split()) >= 3:  # Lowered threshold for better coverage
-                            found = self._smart_highlight_long_quote(page, term)
-                            if found and first_highlight_page is None:
-                                first_highlight_page = page_num + 1
-                        else:
-                            # For short terms, try case-insensitive search
-                            instances_case_insensitive = page.search_for(term, quads=True, flags=fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE)
-                            if instances_case_insensitive:
-                                for inst in instances_case_insensitive:
+                            if instances:
+                                # Found exact match - highlight it
+                                for inst in instances:
                                     highlight = page.add_highlight_annot(inst)
-                                    highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for case-insensitive matches
+                                    highlight.set_colors(stroke=(1, 1, 0))  # Yellow highlight
                                     highlight.update()
                                     if first_highlight_page is None:
                                         first_highlight_page = page_num + 1
+                                found_highlight_for_term = True
+                            else:
+                                # PERFORMANCE: Only try smart highlighting if no exact match and term is substantial
+                                if len(term.split()) >= 5:  # Increased threshold to reduce unnecessary processing
+                                    found = self._smart_highlight_long_quote_fast(page, term)
+                                    if found:
+                                        found_highlight_for_term = True
+                                        if first_highlight_page is None:
+                                            first_highlight_page = page_num + 1
+                                elif len(term.split()) >= 3:  # For shorter terms, just try case-insensitive
+                                    # For short terms, try case-insensitive search only
+                                    instances_case_insensitive = page.search_for(term, quads=True, flags=fitz.TEXT_DEHYPHENATE | fitz.TEXT_PRESERVE_WHITESPACE)
+                                    if instances_case_insensitive:
+                                        for inst in instances_case_insensitive:
+                                            highlight = page.add_highlight_annot(inst)
+                                            highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for case-insensitive matches
+                                            highlight.update()
+                                        found_highlight_for_term = True
+                                        if first_highlight_page is None:
+                                            first_highlight_page = page_num + 1
 
+            # Clear progress indicator
+            progress_placeholder.empty()
             return highlighted_doc.tobytes(), first_highlight_page
 
         finally:
+            progress_placeholder.empty()
             highlighted_doc.close()
 
-    def _smart_highlight_long_quote(self, page, term: str) -> bool:
-        """Smart highlighting for long quotes - tries to find key parts with context"""
+    def _smart_highlight_long_quote_fast(self, page, term: str) -> bool:
+        """Optimized smart highlighting - faster with early termination"""
         words = term.split()
-        found_any = False
         
-        # First, try to find the exact quote or substantial parts of it
-        # This is more reliable than extracting individual patterns
-        
-        # Try to find phrases with context (3-8 words)
-        for phrase_length in range(min(len(words), 8), 2, -1):
-            for start_idx in range(len(words) - phrase_length + 1):
+        # PERFORMANCE: Quick exact phrase search with larger chunks first
+        # Try to find substantial phrases (6+ words) first for better performance
+        for phrase_length in range(min(len(words), 8), 5, -1):  # Reduced max from 12 to 8, min from 3 to 5
+            # PERFORMANCE: Try only every 2nd starting position for longer phrases to reduce iterations
+            step = 2 if phrase_length >= 7 else 1
+            for start_idx in range(0, len(words) - phrase_length + 1, step):
                 phrase = " ".join(words[start_idx : start_idx + phrase_length])
                 
-                # Skip very generic phrases
-                if len(phrase.strip()) < 10:
+                # PERFORMANCE: Quick filter before expensive search
+                if (len(phrase.strip()) < 20 or  # Increased minimum length for performance
+                    phrase.count(' ') < 4):  # Must have at least 4 spaces (5+ words)
                     continue
                     
                 instances = page.search_for(phrase, quads=True)
@@ -679,101 +697,69 @@ class EnhancedPDFProcessor:
                         highlight = page.add_highlight_annot(inst)
                         highlight.set_colors(stroke=(1, 1, 0))  # Yellow for exact matches
                         highlight.update()
-                        found_any = True
-                    # Found substantial phrase match, we're done
-                    return True
+                    return True  # PERFORMANCE: Early termination on first match
         
-        # If no substantial phrases found, try contextual pattern matching
-        # Extract key information patterns with surrounding context
-        key_patterns_with_context = []
+        # PERFORMANCE: Simplified contextual pattern matching - only try the most specific patterns
+        # Look for specific high-value patterns only
+        high_value_patterns = []
         
-        # Look for time patterns with context (e.g., "at 14:30" or "14:30 departure")
-        time_pattern = r'\b\w*\s*\d{1,2}:\d{2}\s*\w*\b'
-        time_matches = re.findall(time_pattern, term)
-        key_patterns_with_context.extend([match.strip() for match in time_matches if len(match.strip()) > 5])
+        # Only look for very specific, easy-to-find patterns to avoid slow regex
+        if '%' in term:
+            # Simple percentage search - much faster than complex regex
+            percentage_words = [w for w in words if '%' in w]
+            for perc_word in percentage_words:
+                # Look for percentage with one word before and after
+                for i, word in enumerate(words):
+                    if word == perc_word and i > 0 and i < len(words) - 1:
+                        context_phrase = f"{words[i-1]} {word} {words[i+1]}"
+                        if len(context_phrase) > 8:
+                            high_value_patterns.append(context_phrase)
         
-        # Look for date patterns with context
-        date_pattern = r'\b\w*\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\w*\b'
-        date_matches = re.findall(date_pattern, term)
-        key_patterns_with_context.extend([match.strip() for match in date_matches if len(match.strip()) > 8])
+        if ':' in term:
+            # Simple time pattern search
+            time_words = [w for w in words if ':' in w and len(w) <= 6]  # Simple time format
+            for time_word in time_words:
+                for i, word in enumerate(words):
+                    if word == time_word and i > 0 and i < len(words) - 1:
+                        context_phrase = f"{words[i-1]} {word} {words[i+1]}"
+                        if len(context_phrase) > 8:
+                            high_value_patterns.append(context_phrase)
         
-        # Look for percentage patterns with context (e.g., "50% smaller", "increased by 23%")
-        percentage_pattern = r'\b\w*\s*\d+%\s*\w*\b'
-        percentage_matches = re.findall(percentage_pattern, term)
-        key_patterns_with_context.extend([match.strip() for match in percentage_matches if len(match.strip()) > 3])
-        
-        # Look for number patterns with meaningful context (avoid standalone numbers)
-        number_with_context_pattern = r'\b\w+\s+\d+\s+\w+\b|\b\d+\s+\w+\s+\w+\b'
-        number_matches = re.findall(number_with_context_pattern, term)
-        key_patterns_with_context.extend([match.strip() for match in number_matches if len(match.strip()) > 8])
-        
-        # Try to highlight contextual patterns
-        for pattern in key_patterns_with_context:
+        # PERFORMANCE: Try only the most promising patterns
+        for pattern in high_value_patterns[:3]:  # Limit to 3 patterns max
             instances = page.search_for(pattern, quads=True)
             if instances:
                 for inst in instances:
                     highlight = page.add_highlight_annot(inst)
                     highlight.set_colors(stroke=(0, 1, 0))  # Green for contextual matches
                     highlight.update()
-                    found_any = True
+                return True  # PERFORMANCE: Early termination
         
-        # If we found contextual patterns, we're done
-        if found_any:
-            return True
-            
-        # Otherwise, fall back to partial matching
-        return self._highlight_partial_matches(page, term)
-
-    def _highlight_partial_matches(self, page, term: str) -> bool:
-        """Find and highlight partial matches for longer quotes with better context preservation"""
-        words = term.split()
-
-        # Try phrases of decreasing length, but be more selective
-        for phrase_length in range(min(len(words), 8), 4, -1):  # Start from 4 words minimum
-            for start_idx in range(len(words) - phrase_length + 1):
-                phrase = " ".join(words[start_idx : start_idx + phrase_length])
-                
-                # Skip phrases that are just numbers or very generic
-                if (re.match(r'^\d+$', phrase.strip()) or  # Just a number
-                    phrase.strip().lower() in ['the', 'and', 'of', 'to', 'in', 'for', 'is', 'on', 'that', 'by'] or
-                    len(phrase.strip()) < 8):  # Too short
-                    continue
-
-                instances = page.search_for(phrase, quads=True)
+        # PERFORMANCE: Much simpler fallback - try only 5-word phrases from start and end
+        if len(words) >= 10:  # Only for longer quotes
+            # Try first 5 words
+            first_phrase = " ".join(words[:5])
+            if len(first_phrase) > 15:
+                instances = page.search_for(first_phrase, quads=True)
                 if instances:
                     for inst in instances:
                         highlight = page.add_highlight_annot(inst)
-                        highlight.set_colors(
-                            stroke=(1, 0.8, 0)
-                        )  # Orange for partial matches
+                        highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for partial matches
                         highlight.update()
-                    return True  # Found something meaningful, stop here
-        
-        # If we still haven't found anything, try to find meaningful 3-word phrases
-        # but only if they contain important information
-        for start_idx in range(len(words) - 2):
-            phrase = " ".join(words[start_idx : start_idx + 3])
+                    return True
             
-            # Only highlight 3-word phrases if they contain meaningful information
-            if (re.search(r'\d+%', phrase) or  # Contains percentage
-                re.search(r'\d+\s+\w+', phrase) or  # Contains "number word"
-                re.search(r'\w+\s+\d+', phrase) or  # Contains "word number"
-                re.search(r'\d{1,2}:\d{2}', phrase) or  # Contains time
-                len(phrase.strip()) >= 12):  # Or is substantial enough
-                
-                # Additional check: avoid standalone numbers
-                if not re.match(r'^\d+$', phrase.strip()):
-                    instances = page.search_for(phrase, quads=True)
-                    if instances:
-                        for inst in instances:
-                            highlight = page.add_highlight_annot(inst)
-                            highlight.set_colors(
-                                stroke=(1, 0.6, 0)
-                            )  # Darker orange for 3-word contextual matches
-                            highlight.update()
-                        return True  # Found something, stop here
+            # Try last 5 words
+            last_phrase = " ".join(words[-5:])
+            if len(last_phrase) > 15:
+                instances = page.search_for(last_phrase, quads=True)
+                if instances:
+                    for inst in instances:
+                        highlight = page.add_highlight_annot(inst)
+                        highlight.set_colors(stroke=(1, 0.8, 0))  # Orange for partial matches
+                        highlight.update()
+                    return True
         
-        return False  # Nothing meaningful found
+        return False  # PERFORMANCE: No complex fallback matching
 
     def __del__(self):
         """Clean up document resources"""
