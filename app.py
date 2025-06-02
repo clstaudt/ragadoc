@@ -52,8 +52,10 @@ class ChatManager:
             "current_chat_id": None,
             "selected_model": None,
             "use_rag": True,  # Enable RAG by default
+            "generating": False,  # Track if currently generating
+            "stop_generation": False,  # Flag to stop generation
             "rag_config": {
-                "chunk_size": 128,
+                "chunk_size": 256,
                 "chunk_overlap": 25,
                 "similarity_threshold": 0.7,
                 "top_k": 10,
@@ -169,25 +171,6 @@ class ChatManager:
                     st.session_state.current_chat_id = list(st.session_state.chats.keys())[0]
                 else:
                     self.create_new_chat(clear_rag=False)  # Don't clear RAG when auto-creating after deletion
-
-class PDFProcessor:
-    """Simplified PDF processing"""
-    
-    @staticmethod
-    def extract_text(pdf_file) -> str:
-        """Extract text from PDF using pdfplumber only"""
-        try:
-            pdf_bytes = pdf_file.getvalue()
-            with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-                text = ""
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-                return text
-        except Exception as e:
-            st.error(f"Error extracting text from PDF: {e}")
-            return ""
 
 class ModelManager:
     """Simplified model management"""
@@ -336,48 +319,38 @@ class ContextChecker:
             return True, None, f"Cannot determine context length for model '{model_name}'. Context checking skipped."
         
         # Generate the actual system prompt to measure its real size
-        system_prompt = f"""You are a document analysis assistant. Answer questions ONLY using information from this document:
+        system_prompt = f"""You are a document analysis assistant. Answer questions ONLY using information from these relevant document excerpts:
 
-    DOCUMENT CONTENT:
-    {document_text}
+RELEVANT DOCUMENT EXCERPTS:
+{document_text}
 
-    INITIAL CHECK:
-    First, verify you have received document content above. If the document is empty or missing, respond: "Error: No document content received, cannot proceed."
+INITIAL CHECK:
+First, verify you have received document excerpts above. If the excerpts are empty or missing, respond: "Error: No relevant document content found for this question."
 
-    RESPONSE RULES:
-    Choose ONE approach based on whether the document contains relevant information:
+RESPONSE RULES:
+Choose ONE approach based on whether the excerpts contain relevant information:
 
-    1. **IF ANSWERABLE**: Provide a complete answer with citations
-    - Every factual claim must have a citation [1], [2], etc.
-    - List citations at the end using this exact format:
-        [1] "exact quote from document"
-        [2] "another exact quote"
-    
-    2. **IF NOT ANSWERABLE**: Decline to answer
-    - State: "I cannot answer this based on the document"
-    - Do NOT include any citations when declining
-    - Do not attempt to answer the question with your own knowledge.    
+1. **IF ANSWERABLE**: Provide a complete answer with citations
+- Every factual claim must have a citation [1], [2], etc.
+- List citations at the end using this exact format:
+    [1] "exact quote from document"
+    [2] "another exact quote"
 
-    CITATION GUIDELINES:
-    - Use verbatim quotes in their original language (never translate)
-    - Quote meaningful phrases (3-8 words) that provide context
-    - Include descriptive context around numbers/measurements
-    - Each citation on its own line
+2. **IF NOT ANSWERABLE**: Decline to answer
+- State: "I cannot answer this based on the available document excerpts"
+- Do NOT include any citations when declining
+- Do not attempt to answer the question with your own knowledge.
 
-    LANGUAGE RULES:
-    - Respond in the user's language
-    - Keep citations in the document's original language
+CITATION GUIDELINES:
+- Use verbatim quotes in their original language (never translate)
+- Quote meaningful phrases (3-8 words) that provide context
+- Include descriptive context around numbers/measurements
+- Each citation on its own line
 
-    EXAMPLE - Answerable:
-    Q: Does he have medical experience?
-    A: Yes, he has experience in medical applications. [1]
-
-    [1] "project development for AI applications: medical data mining & AI"
-
-    EXAMPLE - Not answerable:
-    Q: What's his favorite language?
-    A: I cannot answer this based on the document.
-    """
+LANGUAGE RULES:
+- Respond in the user's language
+- Keep citations in the document's original language
+"""
         
         # Measure actual token counts
         system_tokens = ContextChecker.estimate_token_count(system_prompt)
@@ -494,6 +467,8 @@ def render_sidebar(chat_manager):
                 st.rerun()
             
             if use_rag:
+                st.info("🔍 **Smart Retrieval**: The system first finds ALL chunks above the similarity threshold, then limits to the max number. This ensures no high-quality chunks are missed.")
+                
                 # RAG parameters
                 chunk_size = st.slider(
                     "Chunk Size (tokens)",
@@ -525,10 +500,10 @@ def render_sidebar(chat_manager):
                 top_k = st.slider(
                     "Max Retrieved Chunks",
                     min_value=1,
-                    max_value=10,
+                    max_value=20,  # Increased max since we now get all high-similarity chunks first
                     value=st.session_state.rag_config["top_k"],
                     step=1,
-                    help="Maximum number of chunks to retrieve"
+                    help="Maximum chunks to include in final answer (after filtering by similarity threshold). All chunks above similarity threshold are found first, then limited to this number."
                 )
                 
                 embedding_model = st.selectbox(
@@ -634,7 +609,24 @@ def render_document_upload(chat_manager):
     if uploaded_file is not None:
         try:
             with st.spinner("Processing PDF..."):
-                extracted_text = PDFProcessor.extract_text(uploaded_file)
+                # Extract text using EnhancedPDFProcessor directly
+                try:
+                    pdf_bytes = uploaded_file.getvalue()
+                    processor = EnhancedPDFProcessor(pdf_bytes)
+                    extracted_text = processor.extract_full_text()
+                except Exception as e:
+                    st.error(f"Error extracting text from PDF: {e}")
+                    # Fallback to basic extraction if enhanced fails
+                    try:
+                        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                            extracted_text = ""
+                            for page in pdf.pages:
+                                page_text = page.extract_text()
+                                if page_text:
+                                    extracted_text += page_text + "\n"
+                    except Exception as fallback_e:
+                        st.error(f"Fallback extraction also failed: {fallback_e}")
+                        extracted_text = ""
             
             if extracted_text and extracted_text.strip():
                 # Update current chat with document
@@ -841,162 +833,191 @@ def render_chat_interface(chat_manager):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
     
-    # Chat input - only show if document text is valid
+    # Chat input - only show if document text is valid and not currently generating
     document_text = chat.get("document_text", "")
     if document_text and document_text.strip():
-        if prompt := st.chat_input("Ask about your document..."):
-            if not st.session_state.selected_model:
-                st.warning("Please select a model first")
-                return
-            
-            # Add user message
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            chat_manager.add_message("user", prompt)
-            
-            # Generate AI response
-            with st.chat_message("assistant"):
-                try:
-                    # Debug: Log the RAG decision logic
-                    logger.info(f"RAG Decision Debug:")
-                    logger.info(f"  use_rag: {st.session_state.use_rag}")
-                    logger.info(f"  rag_system exists: {st.session_state.rag_system is not None}")
-                    logger.info(f"  rag_processed: {chat.get('rag_processed')}")
-                    logger.info(f"  rag_system.index exists: {getattr(st.session_state.rag_system, 'index', None) is not None if st.session_state.rag_system else False}")
-                    
-                    # Try RAG system first if available and document is processed
-                    if (st.session_state.use_rag and 
-                        st.session_state.rag_system and 
-                        chat.get("rag_processed") and
-                        getattr(st.session_state.rag_system, 'index', None) is not None):
-                        try:
-                            logger.info("Using RAG system for response generation")
-                            response = generate_ai_response_rag(prompt, chat)
+        # Show generation status or chat input
+        if st.session_state.generating:
+            st.info("🤖 Generating response... Use the stop button above to interrupt.")
+            # Disable input during generation
+            st.chat_input("Generating response...", disabled=True)
+        else:
+            if prompt := st.chat_input("Ask about your document..."):
+                if not st.session_state.selected_model:
+                    st.warning("Please select a model first")
+                    return
+                
+                # Add user message
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                chat_manager.add_message("user", prompt)
+                
+                # Generate AI response
+                with st.chat_message("assistant"):
+                    try:
+                        # Debug: Log the RAG decision logic
+                        logger.info(f"RAG Decision Debug:")
+                        logger.info(f"  use_rag: {st.session_state.use_rag}")
+                        logger.info(f"  rag_system exists: {st.session_state.rag_system is not None}")
+                        logger.info(f"  rag_processed: {chat.get('rag_processed')}")
+                        logger.info(f"  rag_system.index exists: {getattr(st.session_state.rag_system, 'index', None) is not None if st.session_state.rag_system else False}")
+                        
+                        # Try RAG system first if available and document is processed
+                        if (st.session_state.use_rag and 
+                            st.session_state.rag_system and 
+                            chat.get("rag_processed") and
+                            getattr(st.session_state.rag_system, 'index', None) is not None):
+                            try:
+                                logger.info("Using RAG system for response generation")
+                                
+                                # Get retrieved chunks for RAG
+                                retrieval_info = st.session_state.rag_system.get_retrieval_info(prompt)
+                                
+                                # Get all retrieved chunks (before filtering) for fallback
+                                try:
+                                    from llama_index.core.retrievers import VectorIndexRetriever
+                                    retriever = VectorIndexRetriever(
+                                        index=st.session_state.rag_system.index,
+                                        similarity_top_k=st.session_state.rag_system.top_k
+                                    )
+                                    all_nodes = retriever.retrieve(prompt)
+                                except Exception as e:
+                                    logger.warning(f"Could not get unfiltered chunks: {e}")
+                                    all_nodes = []
+                                
+                                # Display retrieved chunks information
+                                if retrieval_info:
+                                    # Show chunks that passed the similarity threshold
+                                    with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
+                                        for chunk in retrieval_info:
+                                            st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
+                                            st.text_area(
+                                                f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
+                                                value=chunk['text'],
+                                                height=200,
+                                                disabled=True,
+                                                key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
+                                            )
+                                            st.markdown("---")
+                                    context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
+                                elif all_nodes:
+                                    # Show chunks that were retrieved but didn't pass threshold
+                                    st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
+                                    with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
+                                        for i, node in enumerate(all_nodes[:3]):
+                                            score = getattr(node, 'score', 0.0)
+                                            st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
+                                            st.text_area(
+                                                f"Content {i+1} ({len(node.text)} characters):",
+                                                value=node.text,
+                                                height=200,
+                                                disabled=True,
+                                                key=f"fallback_chunk_{i}_{hash(prompt)}"
+                                            )
+                                            st.markdown("---")
+                                    context_text = "\n\n".join([node.text for node in all_nodes[:3]])
+                                else:
+                                    st.error("❌ No chunks retrieved - this shouldn't happen with a processed document")
+                                    context_text = ""
+                                
+                                # Generate response using retrieved context
+                                response = generate_ai_response_unified(prompt, context_text, is_rag=True, chat_data=chat)
+                                chat_manager.add_message("assistant", response)
+                                
+                                # Show citations for RAG method too
+                                show_citations(response, chat, prompt)
+                                
+                                # Show RAG-specific information
+                                st.info("🔍 Response generated using RAG (semantic search)")
+                                
+                            except Exception as rag_error:
+                                logger.warning(f"RAG response failed, falling back to traditional method: {rag_error}")
+                                st.warning("⚠️ RAG system failed, using traditional processing")
+                                
+                                # Fallback to traditional method
+                                response = generate_ai_response_unified(prompt, chat["document_text"], is_rag=False)
+                                chat_manager.add_message("assistant", response)
+                                
+                                # Show citations for traditional method
+                                show_citations(response, chat, prompt)
+                        else:
+                            # Use traditional method
+                            logger.info("Using traditional method for response generation")
+                            if not st.session_state.use_rag:
+                                logger.info("  Reason: RAG disabled")
+                            elif not st.session_state.rag_system:
+                                logger.info("  Reason: RAG system not available")
+                            elif not chat.get("rag_processed"):
+                                logger.info("  Reason: Document not RAG processed")
+                            elif getattr(st.session_state.rag_system, 'index', None) is None:
+                                logger.info("  Reason: RAG system has no index")
+                                
+                            response = generate_ai_response_unified(prompt, chat["document_text"], is_rag=False)
+                            # Note: Display is handled within generate_ai_response for reasoning support
                             chat_manager.add_message("assistant", response)
                             
-                            # Show citations for RAG method too
+                            # Show citations
                             show_citations(response, chat, prompt)
                             
-                            # Show RAG-specific information
-                            st.info("🔍 Response generated using RAG (semantic search)")
+                            # Show info about processing method
+                            if not st.session_state.use_rag:
+                                st.info("📄 Response generated using full document (RAG disabled)")
+                            elif not chat.get("rag_processed"):
+                                st.info("📄 Response generated using full document (RAG not processed)")
+                            elif getattr(st.session_state.rag_system, 'index', None) is None:
+                                st.info("📄 Response generated using full document (RAG system has no index)")
                             
-                        except Exception as rag_error:
-                            logger.warning(f"RAG response failed, falling back to traditional method: {rag_error}")
-                            st.warning("⚠️ RAG system failed, using traditional processing")
-                            
-                            # Fallback to traditional method
-                            response = generate_ai_response(prompt, chat["document_text"])
-                            chat_manager.add_message("assistant", response)
-                            
-                            # Show citations for traditional method
-                            show_citations(response, chat, prompt)
-                    else:
-                        # Use traditional method
-                        logger.info("Using traditional method for response generation")
-                        if not st.session_state.use_rag:
-                            logger.info("  Reason: RAG disabled")
-                        elif not st.session_state.rag_system:
-                            logger.info("  Reason: RAG system not available")
-                        elif not chat.get("rag_processed"):
-                            logger.info("  Reason: Document not RAG processed")
-                        elif getattr(st.session_state.rag_system, 'index', None) is None:
-                            logger.info("  Reason: RAG system has no index")
-                            
-                        response = generate_ai_response(prompt, chat["document_text"])
-                        # Note: Display is handled within generate_ai_response for reasoning support
-                        chat_manager.add_message("assistant", response)
-                        
-                        # Show citations
-                        show_citations(response, chat, prompt)
-                        
-                        # Show info about processing method
-                        if not st.session_state.use_rag:
-                            st.info("📄 Response generated using full document (RAG disabled)")
-                        elif not chat.get("rag_processed"):
-                            st.info("📄 Response generated using full document (RAG not processed)")
-                        elif getattr(st.session_state.rag_system, 'index', None) is None:
-                            st.info("📄 Response generated using full document (RAG system has no index)")
-                        
-                except Exception as e:
-                    st.error(f"Error generating response: {e}")
+                    except Exception as e:
+                        st.error(f"Error generating response: {e}")
+                        # Reset generation state on error
+                        st.session_state.generating = False
+                        st.session_state.stop_generation = False
     else:
         # Show message when document processing failed
         st.warning("⚠️ **Chat Disabled**: No valid document content available. Please upload a PDF document with readable text to start chatting.")
         st.info("The document may have failed to process, or the extracted text may be empty. Try uploading a different PDF file.")
 
-def generate_ai_response_rag(prompt, chat_data):
-    """Generate AI response using RAG system with streaming"""
-    if not st.session_state.rag_system or not chat_data.get("rag_processed"):
-        raise ValueError("RAG system not available or document not processed")
+def create_system_prompt(document_content, is_rag=False):
+    """
+    Create a unified system prompt by assembling reusable components
     
-    try:
-        # First, get the retrieved chunks (without generating response yet)
-        retrieval_info = st.session_state.rag_system.get_retrieval_info(prompt)
-        
-        # Get all retrieved chunks (before filtering) for fallback
-        try:
-            from llama_index.core.retrievers import VectorIndexRetriever
-            retriever = VectorIndexRetriever(
-                index=st.session_state.rag_system.index,
-                similarity_top_k=st.session_state.rag_system.top_k
-            )
-            all_nodes = retriever.retrieve(prompt)
-        except Exception as e:
-            logger.warning(f"Could not get unfiltered chunks: {e}")
-            all_nodes = []
-        
-        # Display retrieved chunks information - create persistent container
-        chunks_container = st.container()
-        with chunks_container:
-            if retrieval_info:
-                # Show chunks that passed the similarity threshold
-                with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
-                    for chunk in retrieval_info:
-                        st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
-                        st.text_area(
-                            f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
-                            value=chunk['text'],
-                            height=200,
-                            disabled=True,
-                            key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
-                        )
-                        st.markdown("---")
-                context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
-            elif all_nodes:
-                # Show chunks that were retrieved but didn't pass threshold
-                st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
-                with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
-                    for i, node in enumerate(all_nodes[:3]):
-                        score = getattr(node, 'score', 0.0)
-                        st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
-                        st.text_area(
-                            f"Content {i+1} ({len(node.text)} characters):",
-                            value=node.text,
-                            height=200,
-                            disabled=True,
-                            key=f"fallback_chunk_{i}_{hash(prompt)}"
-                        )
-                        st.markdown("---")
-                context_text = "\n\n".join([node.text for node in all_nodes[:3]])
-            else:
-                st.error("❌ No chunks retrieved - this shouldn't happen with a processed document")
-                context_text = ""
-
-        # Create persistent containers for reasoning and answer
-        reasoning_container = st.container()
-        answer_container = st.container()
-
-        # Create system prompt with retrieved context
-        system_prompt = f"""You are a document analysis assistant. Answer questions ONLY using information from these relevant document excerpts:
+    Args:
+        document_content: Either full document text or retrieved chunks text
+        is_rag: Boolean indicating if this is for RAG (chunks) or traditional (full doc)
+    
+    Returns:
+        Formatted system prompt string
+    """
+    # Base role and instruction (shared)
+    base_role = "You are a document analysis assistant. Answer questions ONLY using information from this"
+    
+    # Content section (varies by method)
+    if is_rag:
+        content_section = f"""relevant document excerpts:
 
 RELEVANT DOCUMENT EXCERPTS:
-{context_text}
+{document_content}"""
+        content_type = "relevant document excerpts"
+        content_plural = "excerpts are"
+        error_msg = "Error: No relevant document content found for this question."
+        decline_msg = "I cannot answer this based on the available document excerpts"
+    else:
+        content_section = f"""document:
 
-INITIAL CHECK:
-First, verify you have received document excerpts above. If the excerpts are empty or missing, respond: "Error: No relevant document content found for this question."
-
-RESPONSE RULES:
-Choose ONE approach based on whether the excerpts contain relevant information:
+DOCUMENT CONTENT:
+{document_content}"""
+        content_type = "document"
+        content_plural = "document is"
+        error_msg = "Error: No document content received, cannot proceed."
+        decline_msg = "I cannot answer this based on the document"
+    
+    # Initial check (varies by method)
+    initial_check = f"""INITIAL CHECK:
+First, verify you have received {content_type} above. If the {content_plural} empty or missing, respond: "{error_msg}\""""
+    
+    # Response rules (mostly shared, slight variation in decline message)
+    response_rules = f"""RESPONSE RULES:
+Choose ONE approach based on whether the {content_type} contain{'s' if not is_rag else ''} relevant information:
 
 1. **IF ANSWERABLE**: Provide a complete answer with citations
 - Every factual claim must have a citation [1], [2], etc.
@@ -1005,171 +1026,57 @@ Choose ONE approach based on whether the excerpts contain relevant information:
     [2] "another exact quote"
 
 2. **IF NOT ANSWERABLE**: Decline to answer
-- State: "I cannot answer this based on the available document excerpts"
+- State: "{decline_msg}"
 - Do NOT include any citations when declining
-- Do not attempt to answer the question with your own knowledge.
-
-CITATION GUIDELINES:
+- Do not attempt to answer the question with your own knowledge."""
+    
+    # Citation guidelines (shared)
+    citation_guidelines = """CITATION GUIDELINES:
 - Use verbatim quotes in their original language (never translate)
 - Quote meaningful phrases (3-8 words) that provide context
 - Include descriptive context around numbers/measurements
-- Each citation on its own line
-
-LANGUAGE RULES:
-- Respond in the user's language
-- Keep citations in the document's original language
-
-EXAMPLE - Answerable:
-Q: Does he have medical experience?
-A: Yes, he has experience in medical applications. [1]
-
-[1] "project development for AI applications: medical data mining & AI"
-
-EXAMPLE - Not answerable:
-Q: What's his favorite language?
-A: I cannot answer this based on the available document excerpts.
-"""
-        
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ]
-        
-        # State tracking for parsing reasoning
-        full_response = ""
-        reasoning_content = ""
-        answer_content = ""
-        in_reasoning = False
-        reasoning_started = False
-        
-        # Create placeholders within the persistent containers
-        reasoning_placeholder = reasoning_container.empty()
-        answer_placeholder = answer_container.empty()
-        
-        try:
-            if is_running_in_docker():
-                # Docker - use explicit client configuration
-                import ollama
-                client = ollama.Client(host=st.session_state.rag_system.ollama_base_url)
-                chat_stream = client.chat(
-                    model=st.session_state.selected_model,
-                    messages=messages,
-                    stream=True
-                )
-            else:
-                # Direct execution - use default ollama client
-                import ollama
-                chat_stream = ollama.chat(
-                    model=st.session_state.selected_model,
-                    messages=messages,
-                    stream=True
-                )
-                
-            for chunk in chat_stream:
-                if chunk['message']['content']:
-                    chunk_content = chunk['message']['content']
-                    full_response += chunk_content
-                    
-                    # Check for reasoning tags
-                    think_start = full_response.find('<think>')
-                    think_end = full_response.find('</think>')
-                    
-                    if think_start != -1:
-                        reasoning_started = True
-                        
-                        if think_end != -1:
-                            # Reasoning is complete, extract both parts
-                            reasoning_content = full_response[think_start + 7:think_end].strip()
-                            answer_content = full_response[think_end + 8:].strip()
-                            in_reasoning = False
-                            
-                            # Show completed reasoning in persistent container
-                            with reasoning_placeholder.container():
-                                with st.expander("🤔 Reasoning", expanded=False):
-                                    st.markdown(reasoning_content)
-                            
-                            # Show the actual answer in persistent container
-                            if answer_content:
-                                answer_placeholder.markdown(answer_content)
-                        else:
-                            # Still in reasoning phase
-                            in_reasoning = True
-                            current_reasoning = full_response[think_start + 7:].strip()
-                            
-                            # Show reasoning with spinner or content in persistent container
-                            with reasoning_placeholder.container():
-                                with st.expander("🤔 Reasoning", expanded=False):
-                                    if current_reasoning:
-                                        st.markdown(current_reasoning)
-                                    else:
-                                        with st.spinner("Thinking..."):
-                                            st.empty()
-                    else:
-                        # No reasoning tags detected, stream normally in persistent container
-                        answer_content = full_response
-                        answer_placeholder.markdown(answer_content)
-            
-            # Return the final answer (without reasoning tags) for storage
-            final_answer = answer_content if reasoning_started else full_response
-            return final_answer
-                
-        except Exception as e:
-            st.error(f"Error during streaming: {e}")
-            return ""
-        
-    except Exception as e:
-        logger.error(f"RAG query failed: {e}")
-        raise
-
-def generate_ai_response(prompt, document_text):
-    """Generate AI response using Ollama with reasoning support (fallback method)"""
+- Each citation on its own line"""
     
-    # Check if document text is empty or None
-    if not document_text or not document_text.strip():
+    # Language rules (shared)
+    language_rules = """LANGUAGE RULES:
+- Respond in the user's language
+- Keep citations in the document's original language"""
+    
+    # Assemble the complete prompt
+    return f"""{base_role} {content_section}
+
+{initial_check}
+
+{response_rules}
+
+{citation_guidelines}
+
+{language_rules}
+"""
+
+def generate_ai_response_unified(prompt, document_content, is_rag=False, chat_data=None):
+    """
+    Unified AI response generation for both RAG and traditional methods
+    
+    Args:
+        prompt: User's question
+        document_content: Either full document text or retrieved chunks text
+        is_rag: Boolean indicating if this is RAG method
+        chat_data: Chat data (only needed for RAG to show chunk info)
+    
+    Returns:
+        Generated response text
+    """
+    # Check if document content is empty
+    if not document_content or not document_content.strip():
         return "I apologize, but I cannot answer your question because the document could not be processed or contains no readable text. Please try uploading a different PDF document."
     
-    system_prompt = f"""You are a document analysis assistant. Answer questions ONLY using information from this document:
-
-    DOCUMENT CONTENT:
-    {document_text}
-
-    INITIAL CHECK:
-    First, verify you have received document content above. If the document is empty or missing, respond: "Error: No document content received, cannot proceed."
-
-    RESPONSE RULES:
-    Choose ONE approach based on whether the document contains relevant information:
-
-    1. **IF ANSWERABLE**: Provide a complete answer with citations
-    - Every factual claim must have a citation [1], [2], etc.
-    - List citations at the end using this exact format:
-        [1] "exact quote from document"
-        [2] "another exact quote"
+    # Set generation state
+    st.session_state.generating = True
+    st.session_state.stop_generation = False
     
-    2. **IF NOT ANSWERABLE**: Decline to answer
-    - State: "I cannot answer this based on the document"
-    - Do NOT include any citations when declining
-    - Do not attempt to answer the question with your own knowledge.    
-
-    CITATION GUIDELINES:
-    - Use verbatim quotes in their original language (never translate)
-    - Quote meaningful phrases (3-8 words) that provide context
-    - Include descriptive context around numbers/measurements
-    - Each citation on its own line
-
-    LANGUAGE RULES:
-    - Respond in the user's language
-    - Keep citations in the document's original language
-
-    EXAMPLE - Answerable:
-    Q: Does he have medical experience?
-    A: Yes, he has experience in medical applications. [1]
-
-    [1] "project development for AI applications: medical data mining & AI"
-
-    EXAMPLE - Not answerable:
-    Q: What's his favorite language?
-    A: I cannot answer this based on the document.
-    """
+    # Create unified system prompt
+    system_prompt = create_system_prompt(document_content, is_rag)
     
     messages = [
         {"role": "system", "content": system_prompt},
@@ -1182,14 +1089,18 @@ def generate_ai_response(prompt, document_text):
     answer_content = ""
     in_reasoning = False
     reasoning_started = False
+    generation_stopped = False
     
     # Create containers for dynamic updates
     reasoning_placeholder = st.empty()
     answer_placeholder = st.empty()
     
+    # Create a stop button container that updates during generation
+    stop_container = st.container()
+    
     try:
+        # Determine Ollama client based on environment
         if in_docker:
-            # Docker - use explicit client configuration
             client = ollama.Client(host=ollama_base_url)
             chat_stream = client.chat(
                 model=st.session_state.selected_model,
@@ -1197,14 +1108,33 @@ def generate_ai_response(prompt, document_text):
                 stream=True
             )
         else:
-            # Direct execution - use default ollama client
             chat_stream = ollama.chat(
                 model=st.session_state.selected_model,
                 messages=messages,
                 stream=True
             )
-            
+        
+        # Show initial stop button
+        with stop_container:
+            stop_button_placeholder = st.empty()
+            with stop_button_placeholder.container():
+                # Simple, clean stop button aligned to the right
+                col1, col2 = st.columns([10, 1])
+                with col2:
+                    if st.button("⏹", key=f"stop_gen_{hash(prompt)}", help="Stop generation", type="secondary"):
+                        st.session_state.stop_generation = True
+                        generation_stopped = True
+        
+        # Handle streaming response with reasoning support
+        chunk_count = 0
         for chunk in chat_stream:
+            chunk_count += 1
+            
+            # Periodically check if user wants to stop (every few chunks)
+            if chunk_count % 5 == 0 and st.session_state.get('stop_generation', False):
+                generation_stopped = True
+                break
+                
             if chunk['message']['content']:
                 chunk_content = chunk['message']['content']
                 full_response += chunk_content
@@ -1222,7 +1152,7 @@ def generate_ai_response(prompt, document_text):
                         answer_content = full_response[think_end + 8:].strip()
                         in_reasoning = False
                         
-                        # Show completed reasoning in expandable container
+                        # Show completed reasoning
                         with reasoning_placeholder.container():
                             with st.expander("🤔 Reasoning", expanded=False):
                                 st.markdown(reasoning_content)
@@ -1248,13 +1178,48 @@ def generate_ai_response(prompt, document_text):
                     answer_content = full_response
                     answer_placeholder.markdown(answer_content)
         
+        # Handle stopped generation
+        if generation_stopped or st.session_state.get('stop_generation', False):
+            final_answer = answer_content if reasoning_started else full_response
+            if final_answer.strip():
+                final_answer += "\n\n*[Generation stopped by user]*"
+            else:
+                final_answer = "*[Generation stopped by user before any content was generated]*"
+            
+            # Update display with stopped message
+            if reasoning_started and answer_content:
+                answer_placeholder.markdown(final_answer)
+            elif not reasoning_started:
+                answer_placeholder.markdown(final_answer)
+            
+            # Show stopped message and remove stop button
+            with stop_container:
+                stop_button_placeholder.empty()
+                st.info("🛑 Generation stopped by user")
+        else:
+            # Clear stop button when generation completes normally
+            with stop_container:
+                stop_button_placeholder.empty()
+        
         # Return the final answer (without reasoning tags) for storage
         final_answer = answer_content if reasoning_started else full_response
+        
+        # Add stopped indicator if generation was interrupted
+        if generation_stopped or st.session_state.get('stop_generation', False):
+            if final_answer.strip():
+                final_answer += "\n\n*[Generation stopped by user]*"
+            else:
+                final_answer = "*[Generation stopped by user before any content was generated]*"
+        
         return final_answer
-            
+        
     except Exception as e:
         st.error(f"Error during streaming: {e}")
         return ""
+    finally:
+        # Reset generation state
+        st.session_state.generating = False
+        st.session_state.stop_generation = False
 
 def show_citations(response, chat, user_question=""):
     """Show citation-based references"""

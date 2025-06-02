@@ -272,13 +272,23 @@ class RAGSystem:
         if not self.index:
             raise ValueError("No index available. Process a document first.")
         
-        # Create retriever
+        # Get total number of chunks to determine retrieval limit
+        total_chunks = 0
+        if hasattr(self.index.vector_store, '_collection'):
+            collection = self.index.vector_store._collection
+            total_chunks = collection.count()
+        
+        # Use a larger retrieval limit to ensure we don't miss high-similarity chunks
+        retrieval_limit = min(max(total_chunks, 50), 200)  # At least 50, max 200
+        
+        # Create retriever with larger limit
         retriever = VectorIndexRetriever(
             index=self.index,
-            similarity_top_k=self.top_k
+            similarity_top_k=retrieval_limit
         )
         
         # Create post-processor for similarity filtering
+        # This will filter the larger set and then apply the top_k limit
         postprocessor = SimilarityPostprocessor(
             similarity_cutoff=self.similarity_threshold
         )
@@ -289,7 +299,8 @@ class RAGSystem:
             node_postprocessors=[postprocessor]
         )
         
-        logger.info("Query engine configured")
+        logger.info(f"Query engine configured with retrieval_limit={retrieval_limit}, similarity_threshold={self.similarity_threshold}")
+        logger.info(f"Total chunks in vector store: {total_chunks}")
     
     def query_document(self, question: str) -> Dict[str, Any]:
         """
@@ -364,64 +375,76 @@ class RAGSystem:
             logger.info(f"Query embedding dimension: {len(query_embedding)}")
             logger.info(f"Query embedding sample: {query_embedding[:3]}")
             
-            # Create retriever
-            retriever = VectorIndexRetriever(
-                index=self.index,
-                similarity_top_k=self.top_k
-            )
-            logger.info(f"Created retriever with top_k={self.top_k}")
-            
-            # Check vector store status
+            # Get total number of chunks in the vector store
+            total_chunks = 0
             if hasattr(self.index.vector_store, '_collection'):
                 collection = self.index.vector_store._collection
-                stored_count = collection.count()
-                logger.info(f"Vector store contains {stored_count} embeddings")
-                
-                # Test direct ChromaDB query
+                total_chunks = collection.count()
+                logger.info(f"Vector store contains {total_chunks} embeddings")
+            
+            # Strategy: Retrieve a larger set first, then filter by similarity
+            # Use a reasonable upper bound to avoid memory issues
+            retrieval_limit = min(max(total_chunks, 50), 200)  # At least 50, max 200
+            
+            # Create retriever with larger limit
+            retriever = VectorIndexRetriever(
+                index=self.index,
+                similarity_top_k=retrieval_limit
+            )
+            logger.info(f"Created retriever with retrieval_limit={retrieval_limit} (total_chunks={total_chunks})")
+            
+            # Test direct ChromaDB query for comparison
+            if hasattr(self.index.vector_store, '_collection'):
+                collection = self.index.vector_store._collection
                 logger.info("Testing direct ChromaDB query...")
                 try:
                     chroma_results = collection.query(
                         query_embeddings=[query_embedding],
-                        n_results=min(self.top_k, stored_count)
+                        n_results=min(retrieval_limit, total_chunks)
                     )
                     logger.info(f"Direct ChromaDB query returned {len(chroma_results['ids'][0])} results")
                     if chroma_results['distances'][0]:
-                        logger.info(f"Direct ChromaDB distances: {chroma_results['distances'][0]}")
+                        logger.info(f"Direct ChromaDB distances: {chroma_results['distances'][0][:5]}...")  # Show first 5
                         # Convert distances to similarities (ChromaDB uses cosine distance)
                         similarities = [1 - dist for dist in chroma_results['distances'][0]]
-                        logger.info(f"Converted to similarities: {similarities}")
+                        above_threshold = [s for s in similarities if s >= self.similarity_threshold]
+                        logger.info(f"Chunks above threshold ({self.similarity_threshold}): {len(above_threshold)}")
                 except Exception as e:
                     logger.error(f"Direct ChromaDB query failed: {e}")
             
-            # Retrieve nodes
+            # Retrieve nodes with larger limit
             logger.info("Retrieving nodes via LlamaIndex...")
             nodes = retriever.retrieve(question)
             logger.info(f"Retrieved {len(nodes)} nodes before filtering")
             
-            # Log all scores for debugging
-            for i, node in enumerate(nodes):
-                score = getattr(node, 'score', 0.0)
-                logger.info(f"Node {i+1} score: {score:.6f} (threshold: {self.similarity_threshold})")
-                logger.info(f"Node {i+1} text preview: {node.text[:100]}...")
-                
-                # Check if node has embedding
-                if hasattr(node, 'embedding') and node.embedding:
-                    logger.info(f"Node {i+1} has embedding: dimension={len(node.embedding)}")
-                else:
-                    logger.info(f"Node {i+1} has no embedding stored")
-            
-            # Filter by similarity threshold
+            # Filter by similarity threshold FIRST (this is the key change)
             filtered_nodes = [
                 node for node in nodes 
                 if getattr(node, 'score', 0.0) >= self.similarity_threshold
             ]
             
-            logger.info(f"After filtering: {len(filtered_nodes)} nodes remain")
+            logger.info(f"After similarity filtering: {len(filtered_nodes)} nodes remain")
+            
+            # Now apply top_k limit to the already-filtered high-quality chunks
+            # This ensures we don't lose relevant chunks due to arbitrary limits
+            if len(filtered_nodes) > self.top_k:
+                logger.info(f"Limiting to top {self.top_k} chunks from {len(filtered_nodes)} high-similarity chunks")
+                final_nodes = filtered_nodes[:self.top_k]
+            else:
+                final_nodes = filtered_nodes
+            
+            # Log all scores for debugging
+            for i, node in enumerate(final_nodes):
+                score = getattr(node, 'score', 0.0)
+                logger.info(f"Final node {i+1} score: {score:.6f}")
+                logger.info(f"Final node {i+1} text preview: {node.text[:100]}...")
+            
+            logger.info(f"Final result: {len(final_nodes)} chunks")
             logger.info(f"=== RETRIEVAL DEBUG END ===")
             
             # Prepare chunk information
             chunks_info = []
-            for i, node in enumerate(filtered_nodes):
+            for i, node in enumerate(final_nodes):
                 chunk_info = {
                     "chunk_id": i + 1,
                     "text": node.text,
