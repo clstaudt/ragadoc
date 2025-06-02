@@ -765,16 +765,3 @@ class EnhancedPDFProcessor:
         """Clean up document resources"""
         if hasattr(self, "doc") and self.doc:
             self.doc.close()
-
-
-# Streamlit integration functions
-def process_pdf_with_highlighting(pdf_bytes: bytes) -> EnhancedPDFProcessor:
-    """Create PDF processor"""
-    return EnhancedPDFProcessor(pdf_bytes)
-
-
-def highlight_ai_referenced_text(
-    pdf_processor: EnhancedPDFProcessor, ai_response: str, original_text: str, user_question: str = ""
-):
-    """Legacy function for backward compatibility"""
-    return pdf_processor.display_citation_based_references(ai_response, original_text, user_question)

@@ -18,7 +18,6 @@ class TestBasicImports:
         """Test app.py imports without errors"""
         import app
         assert hasattr(app, 'main')
-        assert hasattr(app, 'PDFProcessor')
         assert hasattr(app, 'ModelManager')
     
     def test_import_ragnarok(self):
@@ -532,7 +531,7 @@ class TestBasicIntegration:
     
     def test_full_pdf_to_text_flow(self):
         """Test complete PDF to text extraction flow"""
-        from app import PDFProcessor
+        from ragnarok import EnhancedPDFProcessor
         
         # Create PDF with some content
         doc = fitz.open()
@@ -546,8 +545,9 @@ class TestBasicIntegration:
         mock_file.getvalue.return_value = pdf_bytes
         mock_file.name = "test.pdf"
         
-        # Extract text
-        text = PDFProcessor.extract_text(mock_file)
+        # Extract text using EnhancedPDFProcessor
+        processor = EnhancedPDFProcessor(pdf_bytes)
+        text = processor.extract_full_text()
         
         # Verify
         assert isinstance(text, str)

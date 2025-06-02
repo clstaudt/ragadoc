@@ -248,13 +248,13 @@ class TestImprovedCitationExtraction:
         
         processor = EnhancedPDFProcessor(pdf_bytes)
         
-        # Simulate the improved _smart_highlight_long_quote logic
+        # Simulate the improved _smart_highlight_long_quote_fast logic
         # Very short terms should return False without trying partial matching
-        result = processor._smart_highlight_long_quote(page, "cat")  # 1 word
+        result = processor._smart_highlight_long_quote_fast(page, "cat")  # 1 word
         assert result == False  # Should not highlight single words
         
-        result = processor._smart_highlight_long_quote(page, "50%")  # Very short
+        result = processor._smart_highlight_long_quote_fast(page, "50%")  # Very short
         assert result == False  # Should not highlight isolated percentages
         
-        result = processor._smart_highlight_long_quote(page, "the cat sat")  # 3 words
+        result = processor._smart_highlight_long_quote_fast(page, "the cat sat")  # 3 words
         assert result == False  # Should not highlight very short phrases 
