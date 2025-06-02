@@ -343,8 +343,10 @@ Choose ONE approach based on whether the excerpts contain relevant information:
 
 CITATION GUIDELINES:
 - Use verbatim quotes in their original language (never translate)
-- Quote meaningful phrases (3-8 words) that provide context
-- Include descriptive context around numbers/measurements
+- Quote meaningful phrases (5-15 words) that provide sufficient context
+- Include descriptive context around numbers/measurements (e.g., "increased by 50% compared to" not just "50%")
+- Avoid very short snippets like single numbers, dates, or isolated words
+- Each citation should be substantial enough to be meaningful on its own
 - Each citation on its own line
 
 LANGUAGE RULES:
@@ -1033,8 +1035,10 @@ Choose ONE approach based on whether the {content_type} contain{'s' if not is_ra
     # Citation guidelines (shared)
     citation_guidelines = """CITATION GUIDELINES:
 - Use verbatim quotes in their original language (never translate)
-- Quote meaningful phrases (3-8 words) that provide context
-- Include descriptive context around numbers/measurements
+- Quote meaningful phrases (5-15 words) that provide sufficient context
+- Include descriptive context around numbers/measurements (e.g., "increased by 50% compared to" not just "50%")
+- Avoid very short snippets like single numbers, dates, or isolated words
+- Each citation should be substantial enough to be meaningful on its own
 - Each citation on its own line"""
     
     # Language rules (shared)
