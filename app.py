@@ -53,10 +53,10 @@ class ChatManager:
             "selected_model": None,
             "use_rag": True,  # Enable RAG by default
             "rag_config": {
-                "chunk_size": 512,
-                "chunk_overlap": 50,
+                "chunk_size": 128,
+                "chunk_overlap": 25,
                 "similarity_threshold": 0.7,
-                "top_k": 5,
+                "top_k": 10,
                 "embedding_model": "nomic-embed-text",
                 "llm_model": None  # Will be set to selected model
             }
@@ -68,7 +68,7 @@ class ChatManager:
         
         # Create first chat if none exist
         if not st.session_state.chats:
-            self.create_new_chat()
+            self.create_new_chat(clear_rag=False)  # Don't clear RAG on initialization
     
     def init_rag_system(self):
         """Initialize the RAG system"""
@@ -118,8 +118,8 @@ class ChatManager:
                 logger.error(f"Failed to initialize RAG system: {e}")
                 st.session_state.rag_system = None
     
-    def create_new_chat(self):
-        """Create a new chat session with clean vector store"""
+    def create_new_chat(self, clear_rag=False):
+        """Create a new chat session with optional vector store clearing"""
         chat_id = str(uuid.uuid4())
         st.session_state.chats[chat_id] = {
             "messages": [],
@@ -133,8 +133,8 @@ class ChatManager:
         }
         st.session_state.current_chat_id = chat_id
         
-        # Clear the RAG system for fresh start
-        if st.session_state.get("rag_system"):
+        # Only clear the RAG system if explicitly requested
+        if clear_rag and st.session_state.get("rag_system"):
             try:
                 st.session_state.rag_system.clear_all_documents()
                 logger.info(f"Cleared RAG system for new chat: {chat_id}")
@@ -168,7 +168,7 @@ class ChatManager:
                 if st.session_state.chats:
                     st.session_state.current_chat_id = list(st.session_state.chats.keys())[0]
                 else:
-                    self.create_new_chat()
+                    self.create_new_chat(clear_rag=False)  # Don't clear RAG when auto-creating after deletion
 
 class PDFProcessor:
     """Simplified PDF processing"""
@@ -475,7 +475,7 @@ def render_sidebar(chat_manager):
         
         # New chat button
         if st.button("New Chat", use_container_width=True, type="primary"):
-            chat_manager.create_new_chat()
+            chat_manager.create_new_chat(clear_rag=True)  # Clear RAG for explicit new chat
             st.rerun()
         
         st.divider()
@@ -620,7 +620,7 @@ def render_document_upload(chat_manager):
     with col2:
         if st.button("🗑️ Clear Upload", help="Clear file upload state if stuck"):
             # Force clear the uploader by creating a new chat
-            chat_manager.create_new_chat()
+            chat_manager.create_new_chat(clear_rag=True)  # Clear RAG when clearing upload issues
             st.rerun()
     
     # Use a unique key per chat to avoid file state conflicts
@@ -857,11 +857,20 @@ def render_chat_interface(chat_manager):
             # Generate AI response
             with st.chat_message("assistant"):
                 try:
+                    # Debug: Log the RAG decision logic
+                    logger.info(f"RAG Decision Debug:")
+                    logger.info(f"  use_rag: {st.session_state.use_rag}")
+                    logger.info(f"  rag_system exists: {st.session_state.rag_system is not None}")
+                    logger.info(f"  rag_processed: {chat.get('rag_processed')}")
+                    logger.info(f"  rag_system.index exists: {getattr(st.session_state.rag_system, 'index', None) is not None if st.session_state.rag_system else False}")
+                    
                     # Try RAG system first if available and document is processed
                     if (st.session_state.use_rag and 
                         st.session_state.rag_system and 
-                        chat.get("rag_processed")):
+                        chat.get("rag_processed") and
+                        getattr(st.session_state.rag_system, 'index', None) is not None):
                         try:
+                            logger.info("Using RAG system for response generation")
                             response = generate_ai_response_rag(prompt, chat)
                             chat_manager.add_message("assistant", response)
                             
@@ -883,6 +892,16 @@ def render_chat_interface(chat_manager):
                             show_citations(response, chat, prompt)
                     else:
                         # Use traditional method
+                        logger.info("Using traditional method for response generation")
+                        if not st.session_state.use_rag:
+                            logger.info("  Reason: RAG disabled")
+                        elif not st.session_state.rag_system:
+                            logger.info("  Reason: RAG system not available")
+                        elif not chat.get("rag_processed"):
+                            logger.info("  Reason: Document not RAG processed")
+                        elif getattr(st.session_state.rag_system, 'index', None) is None:
+                            logger.info("  Reason: RAG system has no index")
+                            
                         response = generate_ai_response(prompt, chat["document_text"])
                         # Note: Display is handled within generate_ai_response for reasoning support
                         chat_manager.add_message("assistant", response)
@@ -895,6 +914,8 @@ def render_chat_interface(chat_manager):
                             st.info("📄 Response generated using full document (RAG disabled)")
                         elif not chat.get("rag_processed"):
                             st.info("📄 Response generated using full document (RAG not processed)")
+                        elif getattr(st.session_state.rag_system, 'index', None) is None:
+                            st.info("📄 Response generated using full document (RAG system has no index)")
                         
                 except Exception as e:
                     st.error(f"Error generating response: {e}")
@@ -924,43 +945,47 @@ def generate_ai_response_rag(prompt, chat_data):
             logger.warning(f"Could not get unfiltered chunks: {e}")
             all_nodes = []
         
-        # Display retrieved chunks information
-        if retrieval_info:
-            # Show chunks that passed the similarity threshold
-            with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
-                for chunk in retrieval_info:
-                    st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
-                    st.text_area(
-                        f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
-                        value=chunk['text'],
-                        height=200,
-                        disabled=True,
-                        key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
-                    )
-                    st.markdown("---")
-            context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
-        elif all_nodes:
-            # Show chunks that were retrieved but didn't pass threshold
-            st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
-            with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
-                for i, node in enumerate(all_nodes[:3]):
-                    score = getattr(node, 'score', 0.0)
-                    st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
-                    st.text_area(
-                        f"Content {i+1} ({len(node.text)} characters):",
-                        value=node.text,
-                        height=200,
-                        disabled=True,
-                        key=f"fallback_chunk_{i}_{hash(prompt)}"
-                    )
-                    st.markdown("---")
-            context_text = "\n\n".join([node.text for node in all_nodes[:3]])
-        else:
-            st.error("❌ No chunks retrieved - this shouldn't happen with a processed document")
-            context_text = ""
-        
+        # Display retrieved chunks information - create persistent container
+        chunks_container = st.container()
+        with chunks_container:
+            if retrieval_info:
+                # Show chunks that passed the similarity threshold
+                with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
+                    for chunk in retrieval_info:
+                        st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
+                        st.text_area(
+                            f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
+                            value=chunk['text'],
+                            height=200,
+                            disabled=True,
+                            key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
+                        )
+                        st.markdown("---")
+                context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
+            elif all_nodes:
+                # Show chunks that were retrieved but didn't pass threshold
+                st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
+                with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
+                    for i, node in enumerate(all_nodes[:3]):
+                        score = getattr(node, 'score', 0.0)
+                        st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
+                        st.text_area(
+                            f"Content {i+1} ({len(node.text)} characters):",
+                            value=node.text,
+                            height=200,
+                            disabled=True,
+                            key=f"fallback_chunk_{i}_{hash(prompt)}"
+                        )
+                        st.markdown("---")
+                context_text = "\n\n".join([node.text for node in all_nodes[:3]])
+            else:
+                st.error("❌ No chunks retrieved - this shouldn't happen with a processed document")
+                context_text = ""
 
-        
+        # Create persistent containers for reasoning and answer
+        reasoning_container = st.container()
+        answer_container = st.container()
+
         # Create system prompt with retrieved context
         system_prompt = f"""You are a document analysis assistant. Answer questions ONLY using information from these relevant document excerpts:
 
@@ -1017,9 +1042,9 @@ A: I cannot answer this based on the available document excerpts.
         in_reasoning = False
         reasoning_started = False
         
-        # Create containers for dynamic updates
-        reasoning_placeholder = st.empty()
-        answer_placeholder = st.empty()
+        # Create placeholders within the persistent containers
+        reasoning_placeholder = reasoning_container.empty()
+        answer_placeholder = answer_container.empty()
         
         try:
             if is_running_in_docker():
@@ -1058,12 +1083,12 @@ A: I cannot answer this based on the available document excerpts.
                             answer_content = full_response[think_end + 8:].strip()
                             in_reasoning = False
                             
-                            # Show completed reasoning in expandable container
+                            # Show completed reasoning in persistent container
                             with reasoning_placeholder.container():
                                 with st.expander("🤔 Reasoning", expanded=False):
                                     st.markdown(reasoning_content)
                             
-                            # Show the actual answer
+                            # Show the actual answer in persistent container
                             if answer_content:
                                 answer_placeholder.markdown(answer_content)
                         else:
@@ -1071,7 +1096,7 @@ A: I cannot answer this based on the available document excerpts.
                             in_reasoning = True
                             current_reasoning = full_response[think_start + 7:].strip()
                             
-                            # Show reasoning with spinner or content
+                            # Show reasoning with spinner or content in persistent container
                             with reasoning_placeholder.container():
                                 with st.expander("🤔 Reasoning", expanded=False):
                                     if current_reasoning:
@@ -1080,7 +1105,7 @@ A: I cannot answer this based on the available document excerpts.
                                         with st.spinner("Thinking..."):
                                             st.empty()
                     else:
-                        # No reasoning tags detected, stream normally
+                        # No reasoning tags detected, stream normally in persistent container
                         answer_content = full_response
                         answer_placeholder.markdown(answer_content)
             

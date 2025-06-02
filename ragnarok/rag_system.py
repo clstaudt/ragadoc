@@ -48,10 +48,10 @@ class RAGSystem:
         ollama_base_url: str = "http://localhost:11434",
         embedding_model: str = "nomic-embed-text",
         llm_model: str = "llama3.1:8b",
-        chunk_size: int = 512,
-        chunk_overlap: int = 50,
+        chunk_size: int = 128,
+        chunk_overlap: int = 25,
         similarity_threshold: float = 0.7,
-        top_k: int = 5
+        top_k: int = 10
     ):
         """
         Initialize the RAG system
