@@ -550,6 +550,90 @@ class RAGSystem:
                 logger.info("RAG system cleanup completed")
         except Exception as e:
             logger.warning(f"Cleanup failed: {e}")
+    
+    def load_document(self, document_id: str) -> bool:
+        """
+        Load a specific document by its ID and make it the active document
+        
+        Args:
+            document_id: The document ID to load
+            
+        Returns:
+            True if document was loaded successfully, False otherwise
+        """
+        try:
+            collection_name = f"doc_{document_id}"
+            logger.info(f"Attempting to load document: {document_id}")
+            
+            # Check if collection exists
+            existing_collections = self.chroma_client.list_collections()
+            collection_exists = False
+            for existing_collection in existing_collections:
+                collection_obj = existing_collection if hasattr(existing_collection, 'name') else existing_collection
+                existing_name = collection_obj.name if hasattr(collection_obj, 'name') else str(collection_obj)
+                if existing_name == collection_name:
+                    collection_exists = True
+                    break
+            
+            if not collection_exists:
+                logger.warning(f"Collection {collection_name} not found")
+                return False
+            
+            # Get the collection
+            collection = self.chroma_client.get_collection(collection_name)
+            logger.info(f"Found collection: {collection_name}")
+            
+            # Create vector store from existing collection
+            vector_store = ChromaVectorStore(chroma_collection=collection)
+            storage_context = StorageContext.from_defaults(vector_store=vector_store)
+            
+            # Create index from existing vector store
+            self.index = VectorStoreIndex.from_vector_store(
+                vector_store,
+                storage_context=storage_context,
+                embed_model=self.embed_model
+            )
+            logger.info(f"Loaded index for document: {document_id}")
+            
+            # Setup query engine
+            self._setup_query_engine()
+            
+            # Set current document ID
+            self.current_document_id = document_id
+            
+            logger.info(f"Successfully loaded document: {document_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load document {document_id}: {e}")
+            return False
+    
+    def get_available_documents(self) -> List[str]:
+        """
+        Get list of available document IDs
+        
+        Returns:
+            List of document IDs that are available in storage
+        """
+        try:
+            existing_collections = self.chroma_client.list_collections()
+            document_ids = []
+            
+            for existing_collection in existing_collections:
+                collection_obj = existing_collection if hasattr(existing_collection, 'name') else existing_collection
+                collection_name = collection_obj.name if hasattr(collection_obj, 'name') else str(collection_obj)
+                
+                # Extract document ID from collection name (format: doc_{document_id})
+                if collection_name.startswith("doc_"):
+                    document_id = collection_name[4:]  # Remove "doc_" prefix
+                    document_ids.append(document_id)
+            
+            logger.info(f"Found {len(document_ids)} available documents: {document_ids}")
+            return document_ids
+            
+        except Exception as e:
+            logger.error(f"Failed to get available documents: {e}")
+            return []
 
 
 def create_rag_system(

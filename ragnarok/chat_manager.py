@@ -30,6 +30,7 @@ class ChatSession:
     document_name: Optional[str] = None
     document_content: Optional[bytes] = None
     document_text: str = ""
+    document_id: Optional[str] = None  # RAG document ID
     rag_processed: bool = False
     rag_stats: Optional[Dict[str, Any]] = None
     
@@ -203,6 +204,7 @@ class ChatManager:
         chat = self.chats[target_chat_id]
         chat.rag_processed = True
         chat.rag_stats = rag_stats
+        chat.document_id = rag_stats.get("document_id")  # Store the RAG document ID
         
         return True
     

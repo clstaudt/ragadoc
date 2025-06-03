@@ -19,7 +19,6 @@ from ragnarok import (
     RAGSystem, 
     create_rag_system,
     ModelManager,
-    ContextChecker,
     ChatManager,
     LLMInterface,
     PromptBuilder,
@@ -69,9 +68,6 @@ def init_session_state():
     # UI state
     if "selected_model" not in st.session_state:
         st.session_state.selected_model = None
-    
-    if "use_rag" not in st.session_state:
-        st.session_state.use_rag = True
     
     if "generating" not in st.session_state:
         st.session_state.generating = False
@@ -134,33 +130,6 @@ def init_rag_system():
         st.session_state.rag_system = None
 
 
-def show_context_warnings(chat, model_name):
-    """Show context window warnings if needed"""
-    if not chat or not chat.document_text or not model_name:
-        return
-        
-    fits, context_info, error = ContextChecker.check_document_fits_context(
-        chat.document_text, 
-        st.session_state.model_manager, 
-        model_name
-    )
-    
-    if error:
-        st.info(f"ℹ️ {error}")
-        return
-        
-    if context_info:
-        usage_percent = context_info['usage_percent']
-        
-        if usage_percent > 100:
-            st.error(f"⚠️ **Document too large** - Uses {usage_percent:.0f}% of context window")
-            excess_tokens = context_info['total_estimated_tokens'] - context_info['context_length']
-            st.caption(f"Document exceeds limit by ~{excess_tokens:,} tokens")
-        elif usage_percent > 80:
-            st.warning(f"⚠️ **High context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
-            st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
-
-
 def show_citations(response, chat, user_question=""):
     """Show citation-based references"""
     if not chat or not chat.document_content:
@@ -178,6 +147,61 @@ def show_citations(response, chat, user_question=""):
 def render_sidebar():
     """Render the sidebar with chat history and RAG configuration"""
     with st.sidebar:
+        st.header("Settings")
+        
+        # Global Model Selection
+        try:
+            available_models = st.session_state.model_manager.get_available_models()
+            if available_models:
+                previous_model = st.session_state.selected_model
+                st.session_state.selected_model = st.selectbox(
+                    "🤖 Chat Model (Global):",
+                    available_models,
+                    index=0 if not st.session_state.selected_model else 
+                          (available_models.index(st.session_state.selected_model) 
+                           if st.session_state.selected_model in available_models else 0),
+                    key="global_model_selector",
+                    help="This model will be used for all chats"
+                )
+                
+                # Reinitialize RAG system if model changed
+                if previous_model != st.session_state.selected_model and previous_model is not None:
+                    logger.info(f"Model changed from {previous_model} to {st.session_state.selected_model}")
+                    if "rag_system" in st.session_state:
+                        del st.session_state["rag_system"]
+                        init_rag_system()
+                    st.rerun()
+            else:
+                st.error("❌ No Ollama models found")
+                st.caption("Please ensure Ollama is running")
+                return
+        except Exception as e:
+            st.error(f"❌ Error connecting to Ollama: {e}")
+            return
+        
+        # Global Embedding Model Selection
+        previous_embedding_model = st.session_state.rag_config["embedding_model"]
+        embedding_model = st.selectbox(
+            "🔍 Embedding Model (Global):", 
+            ["nomic-embed-text", "mxbai-embed-large", "all-minilm"], 
+            index=0 if st.session_state.rag_config["embedding_model"] == "nomic-embed-text" else 
+                  (1 if st.session_state.rag_config["embedding_model"] == "mxbai-embed-large" else 2),
+            key="global_embedding_selector",
+            help="This model will be used for document embedding and semantic search"
+        )
+        
+        # Update embedding model if changed
+        if embedding_model != previous_embedding_model:
+            st.session_state.rag_config["embedding_model"] = embedding_model
+            logger.info(f"Embedding model changed from {previous_embedding_model} to {embedding_model}")
+            if "rag_system" in st.session_state:
+                del st.session_state["rag_system"]
+                init_rag_system()
+            st.info("⚠️ Embedding model changed. Upload a new document to apply changes.")
+            st.rerun()
+        
+        st.divider()
+        
         st.header("Chat History")
         
         # Connection info
@@ -188,58 +212,58 @@ def render_sidebar():
         
         # New chat button
         if st.button("New Chat", use_container_width=True, type="primary"):
-            clear_rag = lambda: st.session_state.rag_system.clear_all_documents() if st.session_state.rag_system else None
-            st.session_state.chat_manager.create_new_chat(clear_rag)
+            # Stop any ongoing generation before creating new chat
+            if st.session_state.get('generating', False):
+                st.session_state.stop_generation = True
+                st.session_state.generating = False
+                logger.info("Stopped ongoing generation due to new chat creation")
+            
+            st.session_state.chat_manager.create_new_chat()
             st.rerun()
         
         st.divider()
         
         # RAG Configuration
         with st.expander("🔍 RAG Settings", expanded=False):
-            # RAG toggle
-            use_rag = st.checkbox(
-                "Enable RAG (Semantic Search)",
-                value=st.session_state.use_rag,
-                help="Use Retrieval-Augmented Generation for better handling of large documents"
-            )
+            st.info("🔍 **Smart Retrieval**: The system first finds ALL chunks above the similarity threshold, then limits to the max number.")
             
-            if use_rag != st.session_state.use_rag:
-                st.session_state.use_rag = use_rag
-                st.rerun()
+            # RAG parameters (excluding embedding model which is now global)
+            chunk_size = st.slider("Chunk Size (tokens)", 256, 1024, st.session_state.rag_config["chunk_size"], 64)
+            chunk_overlap = st.slider("Chunk Overlap (tokens)", 0, 200, st.session_state.rag_config["chunk_overlap"], 10)
+            similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, st.session_state.rag_config["similarity_threshold"], 0.05)
+            top_k = st.slider("Max Retrieved Chunks", 1, 20, st.session_state.rag_config["top_k"], 1)
             
-            if use_rag:
-                st.info("🔍 **Smart Retrieval**: The system first finds ALL chunks above the similarity threshold, then limits to the max number.")
-                
-                # RAG parameters
-                chunk_size = st.slider("Chunk Size (tokens)", 256, 1024, st.session_state.rag_config["chunk_size"], 64)
-                chunk_overlap = st.slider("Chunk Overlap (tokens)", 0, 200, st.session_state.rag_config["chunk_overlap"], 10)
-                similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, st.session_state.rag_config["similarity_threshold"], 0.05)
-                top_k = st.slider("Max Retrieved Chunks", 1, 20, st.session_state.rag_config["top_k"], 1)
-                embedding_model = st.selectbox("Embedding Model", ["nomic-embed-text", "mxbai-embed-large", "all-minilm"], 
-                                              index=0 if st.session_state.rag_config["embedding_model"] == "nomic-embed-text" else 1)
-                
-                # Update configuration if changed
-                new_config = {
-                    "chunk_size": chunk_size,
-                    "chunk_overlap": chunk_overlap, 
-                    "similarity_threshold": similarity_threshold,
-                    "top_k": top_k,
-                    "embedding_model": embedding_model
-                }
-                
-                if new_config != st.session_state.rag_config:
-                    st.session_state.rag_config = new_config
-                    st.info("⚠️ RAG settings changed. Upload a new document to apply changes.")
+            # Update configuration if changed (excluding embedding model)
+            new_config = {
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap, 
+                "similarity_threshold": similarity_threshold,
+                "top_k": top_k,
+                "embedding_model": st.session_state.rag_config["embedding_model"]  # Keep current embedding model
+            }
+            
+            if new_config != st.session_state.rag_config:
+                st.session_state.rag_config = new_config
+                st.info("⚠️ RAG settings changed. Upload a new document to apply changes.")
             
             # RAG system status
             if st.session_state.rag_system:
                 st.success("✅ RAG System Ready")
-                current_chat = st.session_state.chat_manager.get_current_chat()
-                if current_chat and current_chat.rag_processed:
-                    stats = current_chat.rag_stats or {}
-                    st.info(f"📊 Document: {stats.get('total_chunks', 0)} chunks")
+                
+                # Show available documents
+                available_docs = st.session_state.rag_system.get_available_documents()
+                if available_docs:
+                    st.info(f"📊 {len(available_docs)} document(s) in system")
+                    
+                    # Show current document for current chat
+                    current_chat = st.session_state.chat_manager.get_current_chat()
+                    if current_chat and current_chat.rag_processed:
+                        stats = current_chat.rag_stats or {}
+                        st.info(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
+                    else:
+                        st.warning("📄 No document in current chat")
                 else:
-                    st.warning("📄 No RAG-processed document")
+                    st.warning("📄 No documents processed yet")
             else:
                 st.error("❌ RAG System Not Available")
                 if st.button("🔄 Retry RAG Initialization"):
@@ -262,11 +286,36 @@ def render_sidebar():
                     
                     if st.button(chat_session.title, key=f"chat-{chat_id}", 
                                use_container_width=True, type=button_type):
+                        # Stop any ongoing generation before switching
+                        if st.session_state.get('generating', False):
+                            st.session_state.stop_generation = True
+                            st.session_state.generating = False
+                            logger.info("Stopped ongoing generation due to chat switch")
+                        
+                        # Switch to the chat
                         st.session_state.chat_manager.switch_to_chat(chat_id)
+                        
+                        # Load the appropriate document for this chat if it has one
+                        if chat_session.document_id and st.session_state.rag_system:
+                            try:
+                                success = st.session_state.rag_system.load_document(chat_session.document_id)
+                                if success:
+                                    logger.info(f"Loaded document {chat_session.document_id} for chat {chat_id}")
+                                else:
+                                    logger.warning(f"Could not load document {chat_session.document_id} for chat {chat_id}")
+                            except Exception as e:
+                                logger.error(f"Error loading document for chat {chat_id}: {e}")
+                        
                         st.rerun()
                 
                 with col2:
                     if st.button("×", key=f"del-{chat_id}", help="Delete"):
+                        # Stop any ongoing generation before deleting chat
+                        if st.session_state.get('generating', False):
+                            st.session_state.stop_generation = True
+                            st.session_state.generating = False
+                            logger.info("Stopped ongoing generation due to chat deletion")
+                        
                         st.session_state.chat_manager.delete_chat(chat_id)
                         st.rerun()
 
@@ -311,8 +360,9 @@ def render_document_upload():
                     st.success(f"Document '{uploaded_file.name}' processed successfully!")
                     st.info(f"Extracted {len(extracted_text.split()):,} words")
                     
-                    # Process with RAG system if enabled
-                    if st.session_state.use_rag and st.session_state.rag_system:
+                    # Process with RAG system - now required
+                    if st.session_state.rag_system and getattr(st.session_state.rag_system, 'index', None) is not None:
+                        # RAG system is ready, process document
                         try:
                             with st.spinner("Processing document with RAG system..."):
                                 import uuid
@@ -333,15 +383,39 @@ def render_document_upload():
                         except Exception as e:
                             logger.error(f"RAG processing failed: {e}")
                             st.error(f"❌ **RAG processing failed**: {str(e)}")
-                            st.warning("⚠️ Falling back to traditional full-document processing")
-                    
-                    # Check context window compatibility
-                    if st.session_state.selected_model:
-                        # Get the updated current chat to show context warnings
-                        updated_chat = st.session_state.chat_manager.get_current_chat()
-                        show_context_warnings(updated_chat, st.session_state.selected_model)
+                            st.error("⚠️ Please try again or check your RAG system configuration.")
+                            return
+                    elif st.session_state.rag_system:
+                        # RAG system exists but no index - reinitialize and try again
+                        try:
+                            with st.spinner("Reinitializing RAG system and processing document..."):
+                                # Reinitialize RAG system
+                                init_rag_system()
+                                
+                                import uuid
+                                document_id = str(uuid.uuid4()).replace('-', '')[:16]
+                                
+                                rag_stats = st.session_state.rag_system.process_document(
+                                    extracted_text, document_id
+                                )
+                                
+                                # Update chat with RAG processing info
+                                st.session_state.chat_manager.update_rag_processing(
+                                    rag_stats, current_chat.id  # Explicitly specify the chat ID
+                                )
+                                
+                                st.success("✅ Document processed with RAG system!")
+                                st.info(f"Created {rag_stats['total_chunks']} chunks for semantic search")
+                                
+                        except Exception as e:
+                            logger.error(f"RAG processing failed after reinit: {e}")
+                            st.error(f"❌ **RAG processing failed**: {str(e)}")
+                            st.error("⚠️ Please try again or check your RAG system configuration.")
+                            return
                     else:
-                        st.info("💡 Select a model to check context window compatibility")
+                        st.error("❌ **RAG system not available**")
+                        st.error("Please check the RAG Settings in the sidebar and retry initialization.")
+                        return
                     
                     # Force a rerun to show chat interface
                     st.rerun()
@@ -382,14 +456,8 @@ def render_chat_interface():
                     st.metric("Chunks Created", rag_stats.get("total_chunks", 0))
                 with col2:
                     st.metric("Chunk Size", f"{rag_stats.get('chunk_size', 0)} tokens")
-            elif st.session_state.use_rag:
-                st.warning("⚠️ RAG processing not completed")
             else:
-                st.info("📄 Using traditional full-document processing")
-            
-            # Show context compatibility info
-            if st.session_state.selected_model and current_chat.document_text:
-                show_context_warnings(current_chat, st.session_state.selected_model)
+                st.warning("⚠️ Document not processed with RAG system")
             
             # Show PDF and extracted text side by side
             if current_chat.document_content and current_chat.document_text:
@@ -447,94 +515,92 @@ def render_chat_interface():
 
 
 def generate_response_with_ui(prompt, current_chat):
-    """Generate AI response with UI components (streaming, reasoning, stop button)"""
+    """Generate AI response with UI components (streaming, reasoning, stop button) using RAG"""
     # Set generation state
     st.session_state.generating = True
     st.session_state.stop_generation = False
     
     try:
-        # Determine if using RAG or traditional method
-        if (st.session_state.use_rag and 
-            st.session_state.rag_system and 
-            current_chat.rag_processed and
-            getattr(st.session_state.rag_system, 'index', None) is not None):
-            
-            logger.info("Using RAG system for response generation")
-            
-            # Get retrieved chunks for RAG
-            try:
-                retrieval_info = st.session_state.rag_system.get_retrieval_info(prompt)
-                
-                # Get all retrieved chunks (before filtering) for fallback
-                try:
-                    from llama_index.core.retrievers import VectorIndexRetriever
-                    retriever = VectorIndexRetriever(
-                        index=st.session_state.rag_system.index,
-                        similarity_top_k=st.session_state.rag_system.top_k
-                    )
-                    all_nodes = retriever.retrieve(prompt)
-                except Exception as e:
-                    logger.warning(f"Could not get unfiltered chunks: {e}")
-                    all_nodes = []
-                
-                # Display retrieved chunks information IMMEDIATELY (before generation)
-                if retrieval_info:
-                    # Show chunks that passed the similarity threshold
-                    with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
-                        for chunk in retrieval_info:
-                            st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
-                            st.text_area(
-                                f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
-                                value=chunk['text'],
-                                height=200,
-                                disabled=True,
-                                key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
-                            )
-                            st.markdown("---")
-                    context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
-                    is_rag = True
-                elif all_nodes:
-                    # Show chunks that were retrieved but didn't pass threshold
-                    st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
-                    with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
-                        for i, node in enumerate(all_nodes[:3]):
-                            score = getattr(node, 'score', 0.0)
-                            st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
-                            st.text_area(
-                                f"Content {i+1} ({len(node.text)} characters):",
-                                value=node.text,
-                                height=200,
-                                disabled=True,
-                                key=f"fallback_chunk_{i}_{hash(prompt)}"
-                            )
-                            st.markdown("---")
-                    context_text = "\n\n".join([node.text for node in all_nodes[:3]])
-                    is_rag = True
-                else:
-                    st.error("❌ No chunks retrieved - this shouldn't happen with a processed document")
-                    context_text = current_chat.document_text
-                    is_rag = False
-                    
-            except Exception as rag_error:
-                logger.warning(f"RAG retrieval failed: {rag_error}")
-                st.warning("⚠️ RAG retrieval failed, using full document")
-                context_text = current_chat.document_text
-                is_rag = False
-        else:
-            logger.info("Using traditional method for response generation")
-            if not st.session_state.use_rag:
-                logger.info("  Reason: RAG disabled")
-            elif not st.session_state.rag_system:
-                logger.info("  Reason: RAG system not available")
-            elif not current_chat.rag_processed:
-                logger.info("  Reason: Document not RAG processed")
-            elif getattr(st.session_state.rag_system, 'index', None) is None:
-                logger.info("  Reason: RAG system has no index")
-                
-            context_text = current_chat.document_text
-            is_rag = False
+        # Check RAG system requirements and load appropriate document
+        if not (st.session_state.rag_system and 
+                current_chat.rag_processed and
+                current_chat.document_id):
+            st.error("❌ **RAG system not ready**")
+            st.error("Please ensure the document is processed with RAG system.")
+            return "Error: RAG system not ready for query processing."
         
-        # NOW create containers for dynamic updates (after chunks are displayed)
+        # Ensure the correct document is loaded for this chat
+        if (st.session_state.rag_system.current_document_id != current_chat.document_id):
+            try:
+                success = st.session_state.rag_system.load_document(current_chat.document_id)
+                if not success:
+                    st.error(f"❌ **Could not load document** for this chat")
+                    st.error("The document may have been deleted from the RAG system.")
+                    return "Error: Could not load document for this chat."
+            except Exception as e:
+                st.error(f"❌ **Error loading document**: {str(e)}")
+                return f"Error: Could not load document - {str(e)}"
+        
+        logger.info("Using RAG system for response generation")
+        
+        # Get retrieved chunks for RAG
+        try:
+            retrieval_info = st.session_state.rag_system.get_retrieval_info(prompt)
+            
+            # Get all retrieved chunks (before filtering) for fallback
+            try:
+                from llama_index.core.retrievers import VectorIndexRetriever
+                retriever = VectorIndexRetriever(
+                    index=st.session_state.rag_system.index,
+                    similarity_top_k=st.session_state.rag_system.top_k
+                )
+                all_nodes = retriever.retrieve(prompt)
+            except Exception as e:
+                logger.warning(f"Could not get unfiltered chunks: {e}")
+                all_nodes = []
+            
+            # Display retrieved chunks information IMMEDIATELY (before generation)
+            if retrieval_info:
+                # Show chunks that passed the similarity threshold
+                with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
+                    for chunk in retrieval_info:
+                        st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
+                        st.text_area(
+                            f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
+                            value=chunk['text'],
+                            height=200,
+                            disabled=True,
+                            key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
+                        )
+                        st.markdown("---")
+                context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
+            elif all_nodes:
+                # Show chunks that were retrieved but didn't pass threshold
+                st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
+                with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
+                    for i, node in enumerate(all_nodes[:3]):
+                        score = getattr(node, 'score', 0.0)
+                        st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
+                        st.text_area(
+                            f"Content {i+1} ({len(node.text)} characters):",
+                            value=node.text,
+                            height=200,
+                            disabled=True,
+                            key=f"fallback_chunk_{i}_{hash(prompt)}"
+                        )
+                        st.markdown("---")
+                context_text = "\n\n".join([node.text for node in all_nodes[:3]])
+            else:
+                st.error("❌ No chunks retrieved for this query")
+                st.error("Try adjusting your question or lowering the similarity threshold in RAG Settings.")
+                return "Error: No relevant content found for this query."
+                
+        except Exception as rag_error:
+            logger.error(f"RAG retrieval failed: {rag_error}")
+            st.error(f"❌ **RAG retrieval failed**: {str(rag_error)}")
+            return f"Error: RAG retrieval failed - {str(rag_error)}"
+        
+        # Create containers for dynamic updates (after chunks are displayed)
         reasoning_placeholder = st.empty()
         answer_placeholder = st.empty()
         stop_container = st.container()
@@ -548,7 +614,7 @@ def generate_response_with_ui(prompt, current_chat):
                     if st.button("⏹", key=f"stop_gen_{hash(prompt)}", help="Stop generation"):
                         st.session_state.stop_generation = True
         
-        # Generate response with streaming - using the original streaming logic for reasoning
+        # Generate response with streaming
         full_response = ""
         reasoning_content = ""
         answer_content = ""
@@ -556,8 +622,8 @@ def generate_response_with_ui(prompt, current_chat):
         in_reasoning = False
         generation_stopped = False
         
-        # Use direct ollama streaming (like original) instead of the LLMInterface
-        system_prompt = PromptBuilder.create_system_prompt(context_text, is_rag)
+        # Use direct ollama streaming with RAG context
+        system_prompt = PromptBuilder.create_system_prompt(context_text, is_rag=True)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
@@ -578,21 +644,22 @@ def generate_response_with_ui(prompt, current_chat):
                 stream=True
             )
         
-        # Handle streaming response with reasoning support (original logic)
+        # Handle streaming response with reasoning support
         chunk_count = 0
         for chunk in chat_stream:
             chunk_count += 1
             
-            # Periodically check if user wants to stop (every few chunks)
-            if chunk_count % 5 == 0 and st.session_state.get('stop_generation', False):
+            # Check if user wants to stop on every chunk for responsiveness
+            if st.session_state.get('stop_generation', False):
                 generation_stopped = True
+                logger.info(f"Generation stopped at chunk {chunk_count}")
                 break
                 
             if chunk['message']['content']:
                 chunk_content = chunk['message']['content']
                 full_response += chunk_content
                 
-                # Check for reasoning tags (original logic)
+                # Check for reasoning tags
                 think_start = full_response.find('<think>')
                 think_end = full_response.find('</think>')
                 
@@ -655,15 +722,7 @@ def generate_response_with_ui(prompt, current_chat):
                 stop_button_placeholder.empty()
         
         # Show method information
-        if is_rag:
-            st.info("🔍 Response generated using RAG (semantic search)")
-        else:
-            if not st.session_state.use_rag:
-                st.info("📄 Response generated using full document (RAG disabled)")
-            elif not current_chat.rag_processed:
-                st.info("📄 Response generated using full document (RAG not processed)")
-            elif getattr(st.session_state.rag_system, 'index', None) is None:
-                st.info("📄 Response generated using full document (RAG system has no index)")
+        st.info("🔍 Response generated using RAG (semantic search)")
         
         # Return the final answer (without reasoning tags) for storage
         final_answer = answer_content if reasoning_started else full_response
@@ -691,59 +750,13 @@ def main():
     # Initialize session state
     init_session_state()
     
-    # Model selection
-    try:
-        available_models = st.session_state.model_manager.get_available_models()
-        if available_models:
-            previous_model = st.session_state.selected_model
-            st.session_state.selected_model = st.selectbox(
-                "Choose an Ollama model:",
-                available_models,
-                index=0 if not st.session_state.selected_model else 
-                      (available_models.index(st.session_state.selected_model) 
-                       if st.session_state.selected_model in available_models else 0),
-                key="model_selector"
-            )
-            
-            # Reinitialize RAG system if model changed
-            if previous_model != st.session_state.selected_model and previous_model is not None:
-                logger.info(f"Model changed from {previous_model} to {st.session_state.selected_model}")
-                if st.session_state.use_rag and "rag_system" in st.session_state:
-                    del st.session_state["rag_system"]
-                    init_rag_system()
-                st.rerun()
-            
-            # Show context warnings in main area for serious issues (>80% usage)
-            current_chat = st.session_state.chat_manager.get_current_chat()
-            if current_chat and current_chat.document_text and current_chat.document_text.strip():
-                fits, context_info, error = ContextChecker.check_document_fits_context(
-                    current_chat.document_text,
-                    st.session_state.model_manager,
-                    st.session_state.selected_model
-                )
-                
-                if context_info:
-                    usage_percent = context_info['usage_percent']
-                    
-                    # Only show warnings for serious issues (>80% usage)
-                    if usage_percent > 100:
-                        st.markdown("---")
-                        st.error(f"⚠️ **Document too large** - Uses {usage_percent:.0f}% of context window")
-                        excess_tokens = context_info['total_estimated_tokens'] - context_info['context_length']
-                        st.caption(f"Document exceeds limit by ~{excess_tokens:,} tokens")
-                    elif usage_percent > 80:
-                        st.markdown("---")
-                        st.warning(f"⚠️ **High context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
-                        st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
-        else:
-            st.error("No Ollama models found. Please ensure Ollama is running.")
-            return
-    except Exception as e:
-        st.error(f"Error connecting to Ollama: {e}")
-        return
-    
-    # Render sidebar
+    # Render sidebar (which now includes model selection)
     render_sidebar()
+    
+    # Check if model is selected before proceeding
+    if not st.session_state.selected_model:
+        st.warning("⚠️ Please select a chat model in the sidebar to get started.")
+        return
     
     # Main content - check if we have a valid document
     current_chat = st.session_state.chat_manager.get_current_chat()
