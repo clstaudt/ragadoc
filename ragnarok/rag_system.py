@@ -47,7 +47,7 @@ class RAGSystem:
         self, 
         ollama_base_url: str = "http://localhost:11434",
         embedding_model: str = "nomic-embed-text",
-        llm_model: str = "llama3.1:8b",
+        llm_model: str = "olmo2:13b",
         chunk_size: int = 128,
         chunk_overlap: int = 25,
         similarity_threshold: float = 0.7,
@@ -189,6 +189,19 @@ class RAGSystem:
             
             # Create collection for this document
             collection_name = f"doc_{document_id}"
+            
+            # Check if collection already exists and delete it
+            try:
+                existing_collections = self.chroma_client.list_collections()
+                for existing_collection in existing_collections:
+                    collection_obj = existing_collection if hasattr(existing_collection, 'name') else existing_collection
+                    existing_name = collection_obj.name if hasattr(collection_obj, 'name') else str(collection_obj)
+                    if existing_name == collection_name:
+                        self.chroma_client.delete_collection(existing_name)
+                        logger.info(f"Deleted existing collection: {existing_name}")
+                        break
+            except Exception as e:
+                logger.warning(f"Could not check/delete existing collection {collection_name}: {e}")
             
             collection = self.chroma_client.create_collection(
                 name=collection_name,

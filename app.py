@@ -592,14 +592,6 @@ def render_document_upload(chat_manager):
     st.header("Upload Document")
     st.info("Upload a PDF document to start chatting")
     
-    # Clear upload button for problematic files
-    col1, col2 = st.columns([3, 1])
-    with col2:
-        if st.button("🗑️ Clear Upload", help="Clear file upload state if stuck"):
-            # Force clear the uploader by creating a new chat
-            chat_manager.create_new_chat(clear_rag=True)  # Clear RAG when clearing upload issues
-            st.rerun()
-    
     # Use a unique key per chat to avoid file state conflicts
     uploader_key = f"uploader_{st.session_state.current_chat_id}"
     uploaded_file = st.file_uploader(
@@ -693,39 +685,22 @@ def render_document_upload(chat_manager):
                     )
                     
                     if error:
-                        st.warning(f"Could not check context compatibility: {error}")
+                        st.markdown("---")
+                        st.info(f"ℹ️ {error}")
+                        st.caption("Context checking requires model configuration that includes context window size.")
                     elif context_info:
                         usage_percent = context_info['usage_percent']
                         
-                        # Always show progress bar and basic info after upload
-                        st.markdown("---")
-                        st.markdown("**📊 Context Check:**")
-                        
-                        # Show progress bar for context usage
-                        progress_value = min(usage_percent / 100, 1.0)  # Cap at 100% for display
-                        st.progress(progress_value, text=f"Context Usage: {usage_percent:.1f}%")
-                        
-                        # Show status with appropriate color and clear messaging
+                        # Only show warnings for serious issues (>80% usage)
                         if usage_percent > 100:
+                            st.markdown("---")
                             st.error(f"⚠️ **Document too large** - Uses {usage_percent:.0f}% of context window")
                             excess_tokens = context_info['total_estimated_tokens'] - context_info['context_length']
                             st.caption(f"Document exceeds limit by ~{excess_tokens:,} tokens")
                         elif usage_percent > 80:
+                            st.markdown("---")
                             st.warning(f"⚠️ **High context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
                             st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
-                        elif usage_percent > 50:
-                            st.info(f"ℹ️ **Moderate context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
-                            st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
-                        else:
-                            st.success(f"✅ **Good fit** - Uses {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
-                            st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
-                        
-                        # Show breakdown in expander
-                        with st.expander("📊 Token Breakdown", expanded=False):
-                            st.write(f"**System prompt:** ~{context_info['system_tokens']:,} tokens")
-                            st.write(f"**Response reserve:** ~{context_info['response_reserve']:,} tokens")
-                            st.write(f"**Total estimated:** ~{context_info['total_estimated_tokens']:,} tokens")
-                            st.write(f"**Context limit:** {context_info['context_length']:,} tokens")
                 else:
                     st.info("💡 Select a model to check context window compatibility")
                 
@@ -791,19 +766,23 @@ def render_chat_interface(chat_manager):
                     chat["document_text"], st.session_state.selected_model
                 )
                 
-                if context_info:
+                if error:
+                    st.markdown("---")
+                    st.info(f"ℹ️ {error}")
+                    st.caption("Context checking requires model configuration that includes context window size.")
+                elif context_info:
                     usage_percent = context_info['usage_percent']
                     
-                    # Show progress bar for context usage
-                    progress_value = min(usage_percent / 100, 1.0)  # Cap at 100% for display
-                    st.progress(progress_value, text=f"Context Usage: {usage_percent:.1f}%")
-                    
-                    # Show brief summary
-                    st.caption(f"~{context_info['system_tokens']:,} tokens / {context_info['context_length']:,} limit")
-                    
-                    # Recommend RAG for large documents
-                    if usage_percent > 80:
-                        st.info("💡 Consider enabling RAG for better handling of this large document")
+                    # Only show warnings for serious issues (>80% usage)
+                    if usage_percent > 100:
+                        st.markdown("---")
+                        st.error(f"⚠️ **Document too large** - Uses {usage_percent:.0f}% of context window")
+                        excess_tokens = context_info['total_estimated_tokens'] - context_info['context_length']
+                        st.caption(f"Document exceeds limit by ~{excess_tokens:,} tokens")
+                    elif usage_percent > 80:
+                        st.markdown("---")
+                        st.warning(f"⚠️ **High context usage** - {usage_percent:.0f}% of {context_info['context_length']:,} tokens")
+                        st.caption(f"~{context_info['available_tokens']:,} tokens remaining for conversation")
             
             # Show PDF and extracted text side by side
             if chat.get("document_content") and chat.get("document_text"):
@@ -1278,11 +1257,7 @@ def main():
                 document_text, st.session_state.selected_model
             )
             
-            if error:
-                st.markdown("---")
-                st.info(f"ℹ️ {error}")
-                st.caption("Context checking requires model configuration that includes context window size.")
-            elif context_info:
+            if context_info:
                 usage_percent = context_info['usage_percent']
                 
                 # Only show warnings for serious issues (>80% usage)
