@@ -11,9 +11,34 @@ from .rag_system import (
     create_rag_system
 )
 
+from .model_manager import (
+    ModelManager,
+    ContextChecker
+)
+
+from .chat_manager import (
+    ChatManager,
+    ChatSession,
+    ChatMessage
+)
+
+from .llm_interface import (
+    LLMInterface,
+    PromptBuilder,
+    ReasoningParser
+)
+
 __version__ = "0.1.0"
 __all__ = [
     "EnhancedPDFProcessor",
     "RAGSystem",
-    "create_rag_system"
+    "create_rag_system",
+    "ModelManager",
+    "ContextChecker",
+    "ChatManager",
+    "ChatSession",
+    "ChatMessage",
+    "LLMInterface",
+    "PromptBuilder",
+    "ReasoningParser"
 ]  
