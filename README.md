@@ -1,255 +1,217 @@
-# Ragadoc - Enhanced PDF Processing
+# Ragadoc 🤖📄
 
-A powerful PDF processing system with high-quality text extraction and structure preservation, optimized for LLM/RAG applications.
+**An AI document assistant that answers questions about your PDFs with citations and highlights them directly in the document.**
 
-## Key Features
+Ragadoc is a privacy-first Streamlit application that lets you chat with your documents using locally-run AI models. Ask questions, get grounded answers with citations, and see exactly where the information comes from with automatic PDF highlighting.
 
-- **High-Quality Text Extraction**: Uses PyMuPDF4LLM for superior structure preservation
-- **Automatic Structure Detection**: Headers, tables, lists, and formatting automatically detected
-- **RAG System**: Advanced Retrieval-Augmented Generation for large documents
-  - Document chunking with configurable overlap
-  - Vector embeddings using Ollama models
-  - Semantic search and retrieval with ChromaDB
-  - Handles documents of any size without context window issues
-- **LLM/RAG Optimized**: Specifically designed for AI applications
-- **Local Processing**: All processing happens locally, no external service calls
-- **Citation Highlighting**: Smart PDF highlighting for AI-generated citations
+## ✨ Key Features
 
-## PDF Extraction Capabilities
+- 🤖 **AI Document Q&A** - Ask natural language questions about your PDFs
+- 📍 **Citation Grounding** - Every answer includes specific citations from your document
+- 🎯 **PDF Highlighting** - Citations are automatically highlighted in the original PDF
+- 🔒 **Complete Privacy** - Uses only local AI models, your documents never leave your computer
+- ⚡ **Fast Processing** - Optimized document parsing and retrieval system
+- 🌐 **Easy Web Interface** - Simple Streamlit app, no technical knowledge required
 
-The system uses **PyMuPDF4LLM** as the primary extraction method because it:
+## 🚀 Quick Start
 
-- ✅ **Automatically detects document structure** (headers, tables, lists)
-- ✅ **Preserves formatting** (bold, italic, etc.)
-- ✅ **Optimized for LLM applications** 
-- ✅ **Fast and reliable** (15s vs 2m30s compared to alternatives)
-- ✅ **Local processing only**
+### Prerequisites
 
-### What You Get
+1. **Install Ollama** (for local AI models):
+   ```bash
+   # macOS
+   brew install ollama
+   
+   # Or download from https://ollama.com
+   ```
 
-- **Structured Markdown Output**: Headers marked with `#`, tables preserved, lists formatted
-- **Section Extraction**: Automatic document section detection
-- **Table of Contents**: Generated from document structure
-- **Citation Highlighting**: AI responses can highlight source text in PDFs
+2. **Start Ollama and install required models**:
+   ```bash
+   ollama serve
+   
+   # Install embedding model (required)
+   ollama pull nomic-embed-text
+   
+   # Install a chat model (choose one)
+   ollama pull qwen3:14b           # Recommended
+   ollama pull llama3.1:8b         # Alternative
+   ollama pull mistral:latest      # Alternative
+   ```
 
-## Installation
+### Installation
 
-1. **Install Dependencies**:
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/ragadoc.git
+   cd ragadoc
+   ```
+
+2. **Install Python dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+   
+   Or with conda:
+   ```bash
+   conda env create -f environment.yml
+   conda activate ragadoc
+   ```
+
+3. **Launch the application**:
+   ```bash
+   streamlit run app.py
+   ```
+
+4. **Open your browser** to `http://localhost:8501`
+
+## 📖 How to Use
+
+1. **Upload a PDF** - Drag and drop or browse for your document
+2. **Select AI Model** - Choose from your locally installed Ollama models
+3. **Start Chatting** - Ask questions about your document in natural language
+4. **View Citations** - See highlighted text in the PDF that supports each answer
+5. **Explore** - Continue the conversation to dive deeper into your document
+
+### Example Questions
+
+- "What are the main conclusions of this research paper?"
+- "Summarize the financial results from Q3"
+- "What methodology was used in the study?"
+- "List all the recommendations mentioned"
+
+## 🏗️ Architecture
+
+Ragadoc uses a modern RAG (Retrieval-Augmented Generation) architecture:
+
+```
+PDF Upload → Text Extraction → Chunking → Vector Embeddings
+                                               ↓
+User Question → Semantic Search → Context Retrieval → AI Response
+                                               ↓
+                                    Citation Highlighting
+```
+
+**Tech Stack:**
+- **Frontend**: Streamlit web interface
+- **AI Models**: Ollama (local LLMs)
+- **Vector DB**: ChromaDB for semantic search
+- **PDF Processing**: PyMuPDF4LLM for structure-aware extraction
+- **Embeddings**: nomic-embed-text model
+
+## 🔧 Configuration
+
+### Available Models
+
+The app automatically detects your installed Ollama models. Popular choices:
+
+- **qwen3:14b** - Well-balanced performance and accuracy (recommended)
+- **llama3.1:8b** - Good alternative option
+- **mistral:latest** - Fast and efficient
+- **codellama:latest** - Good for technical documents
+
+### Advanced Settings
+
+Configure in the sidebar:
+- **Chunk Size**: How much text to process at once (default: 512)
+- **Chunk Overlap**: Text overlap between chunks (default: 50)
+- **Top-K Results**: Number of relevant chunks to consider (default: 5)
+
+## 🐳 Docker Support
+
+Run Ragadoc in Docker:
+
 ```bash
-pip install -r requirements.txt
+# Build the image
+docker-compose build
+
+# Start the application
+docker-compose up
 ```
 
-2. **Or use Conda**:
-```bash
-conda env create -f environment.yml
-conda activate ragadoc
-```
+Access at `http://localhost:8501`
 
-3. **Install Ollama Models for RAG**:
-```bash
-# Required for embeddings
-ollama pull nomic-embed-text
+## 🧪 Testing
 
-# Optional alternative embedding models
-ollama pull mxbai-embed-large
-ollama pull all-minilm
-
-# LLM models (if not already installed)
-ollama pull llama3.1:8b
-ollama pull mistral:latest
-```
-
-## Quick Start
-
-### Web Application (Recommended)
+Run the test suite:
 
 ```bash
-# Start the web application
-streamlit run app.py
+pytest tests/ -v
 ```
 
-Then:
-1. Upload a PDF document
-2. Enable RAG in the sidebar settings
-3. Ask questions about your document
-
-### RAG System (Programmatic)
-
-```python
-from ragadoc import create_rag_system
-
-# Create RAG system
-rag = create_rag_system(
-    ollama_base_url="http://localhost:11434",
-    embedding_model="nomic-embed-text",
-    chunk_size=512,
-    chunk_overlap=50
-)
-
-# Process document
-with open('document.pdf', 'rb') as f:
-    pdf_bytes = f.read()
-
-# Extract text and process with RAG
-from ragadoc import EnhancedPDFProcessor
-processor = EnhancedPDFProcessor(pdf_bytes)
-text = processor.extract_full_text()
-
-# Process with RAG
-stats = rag.process_document(text, "my_document")
-print(f"Created {stats['total_chunks']} chunks")
-
-# Query the document
-result = rag.query_document("What is this document about?")
-print(result['response'])
-```
-
-### Basic PDF Processing
-
-```python
-from ragadoc.enhanced_pdf_processor import EnhancedPDFProcessor
-
-# Load PDF
-with open('document.pdf', 'rb') as f:
-    pdf_bytes = f.read()
-
-# Create processor
-processor = EnhancedPDFProcessor(pdf_bytes)
-
-# Extract structured text
-structured_text = processor.extract_full_text()
-print(structured_text)  # Markdown with headers, tables, lists
-
-# Get document sections
-sections = processor.extract_sections()
-for section_name, content in sections.items():
-    print(f"## {section_name}")
-    print(content[:200] + "...")
-```
-
-### Test the RAG System
+Test the RAG system specifically:
 
 ```bash
 python experiments/test_rag.py
 ```
 
-This will test the complete RAG pipeline including dependencies, Ollama connection, and document processing.
+## 🤝 Contributing
 
-### Test the Extraction
-
-Run the demo script to see the extraction in action:
-
-```bash
-python simplified_extraction_demo.py
-```
-
-This will:
-- Find PDF files in the current directory
-- Extract text with full structure preservation
-- Show document sections and headers
-- Display extraction statistics
-
-## Dependencies
-
-### Core Libraries
-- **PyMuPDF4LLM** (>=0.0.5) - High-quality PDF to markdown conversion
-- **PyMuPDF** (>=1.23.0) - PDF processing and highlighting
-- **Streamlit** - Web interface
-- **Loguru** - Logging
-
-### Why PyMuPDF4LLM?
-
-PyMuPDF4LLM was chosen as the primary extraction method because:
-
-1. **Purpose-Built for LLM/RAG**: Specifically designed for AI applications
-2. **Superior Structure Detection**: Automatically handles headers, tables, lists
-3. **Performance**: Much faster than alternatives (15s vs 2m30s)
-4. **Reliability**: Consistent, high-quality output
-5. **Local Processing**: No external API calls required
-
-## Example Output
-
-**Before** (basic extraction):
-```
-Introduction This document describes the new system. Features The system has many features. Performance Tests show good performance.
-```
-
-**After** (PyMuPDF4LLM):
-```markdown
-# Introduction
-
-This document describes the new system.
-
-## Features
-
-The system has many features:
-- Feature 1
-- Feature 2
-- Feature 3
-
-## Performance
-
-Tests show good performance:
-
-| Metric | Value |
-|--------|-------|
-| Speed  | Fast  |
-| Memory | Low   |
-```
-
-## Architecture
-
-The system is built around a single, reliable extraction method:
-
-```
-PDF Input → PyMuPDF4LLM → Structured Markdown → Sections/TOC
-                ↓
-         (fallback if needed)
-                ↓
-         Basic Text Extraction
-```
-
-## Contributing
+We welcome contributions! Here's how to get started:
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Test with various PDF types
-5. Submit a pull request
+4. Add tests for new functionality
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
-## License
-
-MIT License - see LICENSE file for details.
-
-## Documentation
-
-- **[RAG System Implementation](RAG_IMPLEMENTATION.md)**: Detailed guide to the RAG system, configuration, and troubleshooting
-- **[PDF Extraction Summary](PDF_EXTRACTION_SUMMARY.md)**: Technical details about PDF processing methods
-
-## Testing
+### Development Setup
 
 ```bash
-python -m pytest tests/ -v
+# Install development dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest
+
+# Run linting
+flake8 ragadoc/
 ```
 
-## Configuration
+## 📋 Requirements
 
-The application automatically detects its environment:
-- **Direct execution**: Uses `http://localhost:11434`
-- **Docker**: Uses `http://host.docker.internal:11434`
+- Python 3.8+
+- Ollama (for local AI models)
+- 4GB+ RAM (depending on chosen model)
+- PDF documents to analyze
 
-## Troubleshooting
+## 🐛 Troubleshooting
 
-### Connection Issues
+### Common Issues
+
+**Ollama Connection Error**
 ```bash
 # Verify Ollama is running
 curl http://localhost:11434/api/version
 
-# For Docker: ensure Ollama accepts external connections
+# If using Docker, ensure external access
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
 ```
 
-### Common Solutions
-- **"No models found"**: Pull a model with `ollama pull olmo2:7b`
-- **"Can't connect"**: Restart Ollama with correct host settings
-- **Upload fails**: Use "🗑️ Clear Upload" button to reset file state
+**No Models Available**
+```bash
+# Install required models
+ollama pull nomic-embed-text
+ollama pull qwen3:14b
+```
+
+**Slow Performance**
+- Try a smaller model like `mistral:latest`
+- Reduce chunk size in settings
+- Ensure sufficient RAM is available
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Ollama](https://ollama.com) for making local AI accessible
+- [Streamlit](https://streamlit.io) for the amazing web framework
+- [PyMuPDF](https://pymupdf.readthedocs.io/) for PDF processing
+- [ChromaDB](https://www.trychroma.com/) for vector storage
+
+---
+
+**⭐ Star this repo if Ragadoc helps you work with your documents more effectively!**
