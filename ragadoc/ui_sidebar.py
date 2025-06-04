@@ -97,7 +97,7 @@ def render_sidebar():
             st.info("🔍 **Smart Retrieval**: The system first finds ALL chunks above the similarity threshold, then limits to the max number.")
             
             # RAG parameters (excluding embedding model which is now global)
-            chunk_size = st.slider("Chunk Size (tokens)", 256, 1024, st.session_state.rag_config["chunk_size"], 64)
+            chunk_size = st.slider("Chunk Size (tokens)", 32, 1024, st.session_state.rag_config["chunk_size"], 64)
             chunk_overlap = st.slider("Chunk Overlap (tokens)", 0, 200, st.session_state.rag_config["chunk_overlap"], 10)
             similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, st.session_state.rag_config["similarity_threshold"], 0.05)
             top_k = st.slider("Max Retrieved Chunks", 1, 20, st.session_state.rag_config["top_k"], 1)
