@@ -1,4 +1,4 @@
-# Ragnarok - Enhanced PDF Processing
+# Ragadoc - Enhanced PDF Processing
 
 A powerful PDF processing system with high-quality text extraction and structure preservation, optimized for LLM/RAG applications.
 
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 2. **Or use Conda**:
 ```bash
 conda env create -f environment.yml
-conda activate ragnarok
+conda activate ragadoc
 ```
 
 3. **Install Ollama Models for RAG**:
@@ -76,7 +76,7 @@ Then:
 ### RAG System (Programmatic)
 
 ```python
-from ragnarok import create_rag_system
+from ragadoc import create_rag_system
 
 # Create RAG system
 rag = create_rag_system(
@@ -91,7 +91,7 @@ with open('document.pdf', 'rb') as f:
     pdf_bytes = f.read()
 
 # Extract text and process with RAG
-from ragnarok import EnhancedPDFProcessor
+from ragadoc import EnhancedPDFProcessor
 processor = EnhancedPDFProcessor(pdf_bytes)
 text = processor.extract_full_text()
 
@@ -107,7 +107,7 @@ print(result['response'])
 ### Basic PDF Processing
 
 ```python
-from ragnarok.enhanced_pdf_processor import EnhancedPDFProcessor
+from ragadoc.enhanced_pdf_processor import EnhancedPDFProcessor
 
 # Load PDF
 with open('document.pdf', 'rb') as f:

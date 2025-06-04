@@ -17,11 +17,10 @@ class TestBasicImports:
         """Test main app imports"""
         import app
         assert hasattr(app, 'main')
-        assert hasattr(app, 'ModelManager')
     
-    def test_ragnarok_import(self):
-        """Test ragnarok package imports"""
-        from ragnarok import EnhancedPDFProcessor, RAGSystem
+    def test_ragadoc_import(self):
+        """Test ragadoc package imports"""
+        from ragadoc import EnhancedPDFProcessor, RAGSystem
         assert EnhancedPDFProcessor is not None
         assert RAGSystem is not None
 
@@ -31,15 +30,16 @@ class TestEnvironment:
     
     def test_docker_detection(self):
         """Test Docker detection returns boolean"""
-        from app import is_running_in_docker
+        from ragadoc.ui_config import is_running_in_docker
         result = is_running_in_docker()
         assert isinstance(result, bool)
     
     def test_ollama_url_configured(self):
         """Test Ollama URL is properly configured"""
-        import app
-        assert app.ollama_base_url.startswith('http')
-        assert '11434' in app.ollama_base_url
+        from ragadoc.ui_config import get_ollama_base_url
+        url = get_ollama_base_url()
+        assert url.startswith('http')
+        assert '11434' in url
 
 
 class TestPDFBasics:
@@ -47,7 +47,7 @@ class TestPDFBasics:
     
     def test_pdf_creation_and_extraction(self):
         """Test PDF creation and text extraction work"""
-        from ragnarok import EnhancedPDFProcessor
+        from ragadoc import EnhancedPDFProcessor
         
         # Create simple test PDF
         doc = fitz.open()
@@ -66,7 +66,7 @@ class TestPDFBasics:
     
     def test_pdf_error_handling(self):
         """Test PDF processor handles bad input"""
-        from ragnarok import EnhancedPDFProcessor
+        from ragadoc import EnhancedPDFProcessor
         
         try:
             processor = EnhancedPDFProcessor(b"not a pdf")
@@ -83,14 +83,16 @@ class TestModelManager:
     
     def test_get_models_returns_list(self):
         """Test get_available_models returns list"""
-        from app import ModelManager
-        models = ModelManager.get_available_models()
+        from ragadoc.model_manager import ModelManager
+        model_manager = ModelManager()
+        models = model_manager.get_available_models()
         assert isinstance(models, list)
     
     def test_model_info_doesnt_crash(self):
         """Test get_model_info doesn't crash"""
-        from app import ModelManager
-        info = ModelManager.get_model_info("test-model")
+        from ragadoc.model_manager import ModelManager
+        model_manager = ModelManager()
+        info = model_manager.get_model_info("test-model")
         # Should return something or None, just shouldn't crash
         assert info is None or info is not None
 
@@ -100,15 +102,16 @@ class TestContextChecker:
     
     def test_token_estimation(self):
         """Test token estimation works"""
-        from app import ContextChecker
+        from ragadoc.model_manager import ContextChecker
         count = ContextChecker.estimate_token_count("test text")
         assert isinstance(count, int)
         assert count > 0
     
     def test_context_checking_basic(self):
         """Test context checking doesn't crash"""
-        from app import ContextChecker
-        result = ContextChecker.check_document_fits_context("test", "model")
+        from ragadoc.model_manager import ContextChecker, ModelManager
+        model_manager = ModelManager()
+        result = ContextChecker.check_document_fits_context("test", model_manager, "model")
         # Should return something, format may vary
         assert result is not None
 
@@ -129,14 +132,15 @@ class TestIntegration:
     
     def test_model_list_integration(self):
         """Test real model list from Ollama"""
-        from app import ModelManager
-        models = ModelManager.get_available_models()
+        from ragadoc.model_manager import ModelManager
+        model_manager = ModelManager()
+        models = model_manager.get_available_models()
         assert isinstance(models, list)
         # May be empty, that's ok
     
     def test_pdf_to_text_workflow(self):
         """Test complete PDF to text workflow"""
-        from ragnarok import EnhancedPDFProcessor
+        from ragadoc import EnhancedPDFProcessor
         
         # Create realistic test PDF
         doc = fitz.open()

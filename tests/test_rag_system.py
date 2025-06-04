@@ -12,7 +12,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ragnarok import RAGSystem, create_rag_system
+from ragadoc import RAGSystem, create_rag_system
 
 # Known available models
 EMBEDDING_MODEL = "nomic-embed-text:latest"

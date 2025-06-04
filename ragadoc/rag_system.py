@@ -74,7 +74,7 @@ class RAGSystem:
         self.top_k = top_k
         
         # Storage paths
-        self.storage_dir = Path(tempfile.gettempdir()) / "ragnarok_rag"
+        self.storage_dir = Path(tempfile.gettempdir()) / "ragadoc_rag"
         self.chroma_dir = self.storage_dir / "chroma_db"
         
         # Initialize components

@@ -1,5 +1,5 @@
 """
-Ragnarok - AI-powered PDF processing and highlighting system with RAG capabilities
+Ragadoc - AI-powered PDF processing and highlighting system with RAG capabilities
 """
 
 from .enhanced_pdf_processor import (

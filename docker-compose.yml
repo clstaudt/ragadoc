@@ -4,7 +4,7 @@ services:
   # Streamlit application
   app:
     build: .
-    container_name: ragnarok-app
+    container_name: ragadoc-app
     ports:
       - "8501:8501"
     environment:

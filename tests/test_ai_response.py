@@ -9,7 +9,8 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import app
-from app import create_system_prompt, ModelManager
+from ragadoc.llm_interface import PromptBuilder
+from ragadoc.model_manager import ModelManager
 
 # Known available models
 EMBEDDING_MODEL = "nomic-embed-text:latest"
@@ -32,7 +33,8 @@ class TestModelManager:
     
     def test_get_available_models_real(self):
         """Test getting real model list from Ollama"""
-        models = ModelManager.get_available_models()
+        model_manager = ModelManager()
+        models = model_manager.get_available_models()
         
         assert isinstance(models, list)
         assert len(models) > 0  # Should have at least one model
@@ -43,14 +45,16 @@ class TestModelManager:
     
     def test_get_model_info_real(self):
         """Test getting model info for known model"""
-        info = ModelManager.get_model_info(LLM_MODEL)
+        model_manager = ModelManager()
+        info = model_manager.get_model_info(LLM_MODEL)
         
         # The function returns various types, just check it doesn't crash
         assert info is not None
     
     def test_get_context_length_real(self):
         """Test getting context length for known model"""
-        context_length = ModelManager.get_context_length(LLM_MODEL)
+        model_manager = ModelManager()
+        context_length = model_manager.get_context_length(LLM_MODEL)
         
         # May return None for unknown models, just check it doesn't crash
         assert context_length is None or isinstance(context_length, int)
@@ -63,7 +67,8 @@ class TestContextChecker:
         """Test token count estimation"""
         test_text = "This is a test sentence with several words."
         
-        token_count = app.ContextChecker.estimate_token_count(test_text)
+        from ragadoc.model_manager import ContextChecker
+        token_count = ContextChecker.estimate_token_count(test_text)
         
         assert isinstance(token_count, int)
         assert token_count > 0
@@ -73,8 +78,10 @@ class TestContextChecker:
         """Test document context checking basic functionality"""
         short_text = "Short text."
         
-        result = app.ContextChecker.check_document_fits_context(
-            short_text, LLM_MODEL, "Test prompt"
+        from ragadoc.model_manager import ContextChecker
+        model_manager = ModelManager()
+        result = ContextChecker.check_document_fits_context(
+            short_text, model_manager, LLM_MODEL, "Test prompt"
         )
         
         # Function may return tuple or dict depending on model support
@@ -88,11 +95,14 @@ class TestEnvironmentDetection:
     
     def test_docker_detection(self):
         """Test Docker environment detection"""
-        result = app.is_running_in_docker()
+        from ragadoc.ui_config import is_running_in_docker
+        result = is_running_in_docker()
         
         assert isinstance(result, bool)
     
     def test_ollama_url_configuration(self):
         """Test Ollama URL is properly configured"""
-        assert app.ollama_base_url.startswith('http')
-        assert ':11434' in app.ollama_base_url 
+        from ragadoc.ui_config import get_ollama_base_url
+        url = get_ollama_base_url()
+        assert url.startswith('http')
+        assert ':11434' in url 

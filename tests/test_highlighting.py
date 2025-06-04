@@ -5,11 +5,16 @@ import pytest
 import sys
 import os
 import fitz
+import tempfile
+import json
+from pathlib import Path
+from unittest.mock import Mock, patch
+import streamlit as st
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ragnarok import EnhancedPDFProcessor
+from ragadoc import EnhancedPDFProcessor
 
 
 class TestHighlightingBasics:
@@ -125,7 +130,7 @@ class TestCitationExtraction:
     
     def test_citation_preserves_context(self):
         """Test that citations preserve meaningful context"""
-        from ragnarok import EnhancedPDFProcessor
+        from ragadoc import EnhancedPDFProcessor
         import fitz
         
         # Create a test PDF
@@ -147,7 +152,7 @@ class TestCitationExtraction:
     
     def test_citation_length_handling(self):
         """Test citation handles different quote lengths appropriately"""
-        from ragnarok import EnhancedPDFProcessor
+        from ragadoc import EnhancedPDFProcessor
         import fitz
         
         # Create a test PDF

@@ -1,4 +1,4 @@
-name: ragnarok
+name: ragadoc
 channels:
   - defaults
   - conda-forge

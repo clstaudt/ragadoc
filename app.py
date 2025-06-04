@@ -1,12 +1,13 @@
 """
-Refactored Streamlit App for Document Q&A
+Streamlit application that provides a web interface for enhanced PDF processing
+from the ragadoc package.
 
 This is now a much simpler main entry point that uses the UI modules
 from the ragnarok package.
 """
 
 import streamlit as st
-from ragnarok import (
+from ragadoc import (
     setup_streamlit_config,
     init_session_state,
     render_sidebar,

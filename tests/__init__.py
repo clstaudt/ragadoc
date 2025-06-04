@@ -1,1 +1,1 @@
-# Tests package for Ragnarok PDF Processing application 
+# Tests package for Ragadoc PDF Processing application 

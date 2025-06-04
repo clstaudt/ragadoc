@@ -9,7 +9,7 @@ import fitz
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ragnarok import EnhancedPDFProcessor
+from ragadoc import EnhancedPDFProcessor
 
 
 class TestBasicExtraction:

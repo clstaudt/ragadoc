@@ -28,8 +28,8 @@ def get_ollama_base_url():
 def setup_streamlit_config():
     """Configure Streamlit page settings"""
     st.set_page_config(
-        page_title="Document Q&A", 
+        page_title="ragadoc - AI-assisted Document Q&A", 
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    st.title("Document Q&A") 
+    st.title("ragadoc - AI-assisted Document Q&A") 
