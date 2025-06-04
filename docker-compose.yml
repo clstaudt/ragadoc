@@ -1,8 +1,10 @@
 version: '3.8'
 
+name: ragadoc
+
 services:
   # Streamlit application
-  app:
+  ragadoc:
     build: .
     container_name: ragadoc-app
     ports:

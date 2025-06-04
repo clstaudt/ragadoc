@@ -3,7 +3,7 @@ Streamlit application that provides a web interface for enhanced PDF processing
 from the ragadoc package.
 
 This is now a much simpler main entry point that uses the UI modules
-from the ragnarok package.
+from the ragadoc package.
 """
 
 import streamlit as st
