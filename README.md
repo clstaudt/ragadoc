@@ -15,30 +15,52 @@ Ragadoc is a privacy-first Streamlit application that lets you chat with your do
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Model Selection Guide
 
-1. **Install Ollama** (for local AI models):
-   ```bash
-   # macOS
-   brew install ollama
-   
-   # Or download from https://ollama.com
-   ```
+Choose models based on your system capabilities:
 
-2. **Start Ollama and install required models**:
-   ```bash
-   ollama serve
-   
-   # Install embedding model (required)
-   ollama pull nomic-embed-text
-   
-   # Install a chat model (choose one)
-   ollama pull qwen3:14b           # Recommended
-   ollama pull llama3.1:8b         # Alternative
-   ollama pull mistral:latest      # Alternative
-   ```
+| Model Type | Model Name | Size | RAM Required | Use Case |
+|------------|------------|------|--------------|----------|
+| **Embedding** | `nomic-embed-text` | ~274MB | 1GB | **Recommended** - General purpose |
+| **Embedding** | `all-minilm` | ~23MB | 512MB | Lightweight alternative |
+| **Chat** | `qwen3:14b` | ~8.5GB | 16GB | **Recommended** - Large model |
+| **Chat** | `llama3.1:8b` | ~4.7GB | 8GB | Balanced option |
+| **Chat** | `mistral:latest` | ~4.1GB | 8GB | Quick responses |
+| **Chat** | `phi3:mini` | ~2.3GB | 4GB | Low-resource systems |
 
-### Installation
+> **Recommendation**: Use `nomic-embed-text` for embeddings and `qwen3:14b` for chat if your system supports it. For lower-spec systems, try `mistral:latest` or `phi3:mini`.
+
+### Prerequisites (Required for Both Installation Methods)
+
+**1. Install Ollama** (for local AI models):
+```bash
+# macOS
+brew install ollama
+
+# Or download from https://ollama.com
+```
+
+**2. Start Ollama and install required models**:
+```bash
+ollama serve
+
+# Install embedding model (required)
+ollama pull nomic-embed-text
+
+# Install a chat model (see recommendations above)
+ollama pull qwen3:14b
+```
+
+### Installation Options
+
+Choose your preferred installation method:
+
+### Option 1: Direct Installation
+
+**Additional Prerequisites:**
+- Python 3.8+
+
+**Installation Steps:**
 
 1. **Clone the repository**:
    ```bash
@@ -63,6 +85,26 @@ Ragadoc is a privacy-first Streamlit application that lets you chat with your do
    ```
 
 4. **Open your browser** to `http://localhost:8501`
+
+### Option 2: Docker Installation
+
+**Additional Prerequisites:**
+- Docker and Docker Compose
+
+**Installation Steps:**
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/yourusername/ragadoc.git
+   cd ragadoc
+   ```
+
+2. **Start with Docker Compose**:
+   ```bash
+   docker-compose up
+   ```
+
+3. **Open your browser** to `http://localhost:8501`
 
 ## 📖 How to Use
 
@@ -116,19 +158,7 @@ Configure in the sidebar:
 - **Chunk Overlap**: Text overlap between chunks (default: 50)
 - **Top-K Results**: Number of relevant chunks to consider (default: 5)
 
-## 🐳 Docker Support
 
-Run Ragadoc in Docker:
-
-```bash
-# Build the image
-docker-compose build
-
-# Start the application
-docker-compose up
-```
-
-Access at `http://localhost:8501`
 
 ## 🧪 Testing
 
