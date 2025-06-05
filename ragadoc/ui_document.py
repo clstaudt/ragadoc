@@ -50,7 +50,6 @@ def render_document_upload():
                 
                 if success:
                     st.success(f"Document '{uploaded_file.name}' processed successfully!")
-                    st.info(f"Extracted {len(extracted_text.split()):,} words")
                     
                     # Process with RAG system - now required
                     if st.session_state.rag_system and getattr(st.session_state.rag_system, 'index', None) is not None:

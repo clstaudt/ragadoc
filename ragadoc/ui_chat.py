@@ -256,8 +256,7 @@ def generate_response_with_ui(prompt, current_chat):
         # Clear the entire loading container (which includes the stop button)
         # This happens for both stopped and completed generation
         
-        # Show method information
-        st.info("🔍 Response generated using RAG (semantic search)")
+        # Method information removed - not needed for end users
         
         # Return the final answer (without reasoning tags) for storage
         final_answer = answer_content if reasoning_started else full_response

@@ -376,7 +376,6 @@ class EnhancedPDFProcessor:
             all_quotes = list(citation_quotes.values())
             
             # Show found citations with improved display
-            st.caption(f"Found {len(citation_quotes)} citation(s)")
             with st.expander("Found Citations", expanded=False):
                 for num, quote in citation_quotes.items():
                     # Clean display without technical details
