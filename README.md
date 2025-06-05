@@ -1,8 +1,12 @@
-# Ragadoc 🤖📄
-
-**An AI document assistant that answers questions about your PDFs with citations and highlights them directly in the document.**
-
-Ragadoc is a privacy-first Streamlit application that lets you chat with your documents using locally-run AI models. Ask questions, get grounded answers with citations, and see exactly where the information comes from with automatic PDF highlighting.
+<div align="center">
+  <img src="assets/logo.png" alt="Ragadoc Logo" width="120" height="120">
+  
+  # ragadoc
+  
+  **An AI document assistant that answers questions about your PDFs with citations and highlights them directly in the document.**
+  
+  <p><em>Ragadoc is a privacy-first Streamlit application that lets you chat with your documents using locally-run AI models. Ask questions, get grounded answers with citations, and see exactly where the information comes from with automatic PDF highlighting.</em></p>
+</div>
 
 ## ✨ Key Features
 
@@ -198,13 +202,6 @@ pytest
 # Run linting
 flake8 ragadoc/
 ```
-
-## 📋 Requirements
-
-- Python 3.8+
-- Ollama (for local AI models)
-- 4GB+ RAM (depending on chosen model)
-- PDF documents to analyze
 
 ## 🐛 Troubleshooting
 
