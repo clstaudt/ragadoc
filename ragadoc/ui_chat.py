@@ -292,13 +292,10 @@ def render_chat_interface():
     
     # Show current document info
     if current_chat.document_name:
-        with st.expander("📄 Current Document", expanded=False):
-            st.write(f"**Document:** {current_chat.document_name}")
-            
-            # Show RAG processing status
+        with st.expander(f"📄 {current_chat.document_name}", expanded=False):
+            # Show RAG processing statistics
             if current_chat.rag_processed:
                 rag_stats = current_chat.rag_stats or {}
-                st.success("✅ Processed with RAG system")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric("Chunks Created", rag_stats.get("total_chunks", 0))

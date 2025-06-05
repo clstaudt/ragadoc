@@ -10,6 +10,12 @@ from loguru import logger
 
 from .ui_config import is_running_in_docker, get_ollama_base_url
 from .ui_session import init_rag_system
+from .config import (
+    CHUNK_SIZE_RANGE, CHUNK_SIZE_STEP,
+    CHUNK_OVERLAP_RANGE, CHUNK_OVERLAP_STEP,
+    SIMILARITY_THRESHOLD_RANGE, SIMILARITY_THRESHOLD_STEP,
+    TOP_K_RANGE, TOP_K_STEP
+)
 
 
 def render_sidebar():
@@ -80,10 +86,10 @@ def render_sidebar():
         if expert_mode:
             with st.expander("🔍 RAG Settings", expanded=False):
                 # RAG parameters (excluding embedding model which is now global)
-                chunk_size = st.slider("Chunk Size (tokens)", 32, 1024, st.session_state.rag_config["chunk_size"], 64)
-                chunk_overlap = st.slider("Chunk Overlap (tokens)", 0, 200, st.session_state.rag_config["chunk_overlap"], 10)
-                similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, st.session_state.rag_config["similarity_threshold"], 0.05)
-                top_k = st.slider("Max Retrieved Chunks", 1, 20, st.session_state.rag_config["top_k"], 1)
+                chunk_size = st.slider("Chunk Size (tokens)", CHUNK_SIZE_RANGE[0], CHUNK_SIZE_RANGE[1], st.session_state.rag_config["chunk_size"], CHUNK_SIZE_STEP)
+                chunk_overlap = st.slider("Chunk Overlap (tokens)", CHUNK_OVERLAP_RANGE[0], CHUNK_OVERLAP_RANGE[1], st.session_state.rag_config["chunk_overlap"], CHUNK_OVERLAP_STEP)
+                similarity_threshold = st.slider("Similarity Threshold", SIMILARITY_THRESHOLD_RANGE[0], SIMILARITY_THRESHOLD_RANGE[1], st.session_state.rag_config["similarity_threshold"], SIMILARITY_THRESHOLD_STEP)
+                top_k = st.slider("Max Retrieved Chunks", TOP_K_RANGE[0], TOP_K_RANGE[1], st.session_state.rag_config["top_k"], TOP_K_STEP)
                 
                 # Update configuration if changed (excluding embedding model)
                 new_config = {

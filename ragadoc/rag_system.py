@@ -37,6 +37,15 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
+# Local imports
+from .config import (
+    DEFAULT_CHUNK_SIZE, 
+    DEFAULT_CHUNK_OVERLAP, 
+    DEFAULT_SIMILARITY_THRESHOLD, 
+    DEFAULT_TOP_K,
+    DEFAULT_EMBEDDING_MODEL
+)
+
 
 class RAGSystem:
     """
@@ -46,12 +55,12 @@ class RAGSystem:
     def __init__(
         self, 
         ollama_base_url: str = "http://localhost:11434",
-        embedding_model: str = "nomic-embed-text",
+        embedding_model: str = DEFAULT_EMBEDDING_MODEL,
         llm_model: str = "olmo2:13b",
-        chunk_size: int = 128,
-        chunk_overlap: int = 25,
-        similarity_threshold: float = 0.7,
-        top_k: int = 10
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
+        chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+        similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,
+        top_k: int = DEFAULT_TOP_K
     ):
         """
         Initialize the RAG system

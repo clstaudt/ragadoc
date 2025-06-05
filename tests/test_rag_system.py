@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ragadoc import RAGSystem, create_rag_system
+from ragadoc.config import DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP
 
 # Known available models
 EMBEDDING_MODEL = "nomic-embed-text:latest"
@@ -46,8 +47,8 @@ def clean_rag_system(temp_rag_dir):
     rag = RAGSystem(
         embedding_model=EMBEDDING_MODEL,
         llm_model=LLM_MODEL,
-        chunk_size=64,
-        chunk_overlap=16,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        chunk_overlap=DEFAULT_CHUNK_OVERLAP,
         top_k=2
     )
     
@@ -78,7 +79,7 @@ class TestRAGSystemFast:
         
         assert rag.embedding_model == EMBEDDING_MODEL
         assert rag.llm_model == LLM_MODEL
-        assert rag.chunk_size == 64
+        assert rag.chunk_size == DEFAULT_CHUNK_SIZE
         assert rag.current_document_id is None
     
     def test_document_processing_minimal(self, clean_rag_system):
@@ -179,8 +180,8 @@ class TestRAGFactory:
         rag = create_rag_system(
             embedding_model=EMBEDDING_MODEL,
             llm_model=LLM_MODEL,
-            chunk_size=64,
-            chunk_overlap=16
+            chunk_size=DEFAULT_CHUNK_SIZE,
+            chunk_overlap=DEFAULT_CHUNK_OVERLAP
         )
         
         # Override storage directory
@@ -189,7 +190,7 @@ class TestRAGFactory:
         rag._setup_chroma_client()
         
         assert isinstance(rag, RAGSystem)
-        assert rag.chunk_size == 64
+        assert rag.chunk_size == DEFAULT_CHUNK_SIZE
         
         # Quick functionality test
         doc_id = f"factory_test_{uuid.uuid4().hex[:8]}"

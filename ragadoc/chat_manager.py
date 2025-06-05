@@ -11,6 +11,8 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from loguru import logger
 
+from .config import DEFAULT_RAG_CONFIG
+
 
 @dataclass
 class ChatMessage:
@@ -55,14 +57,7 @@ class ChatManager:
         """Initialize chat manager"""
         self.chats: Dict[str, ChatSession] = {}
         self.current_chat_id: Optional[str] = None
-        self._default_rag_config = {
-            "chunk_size": 256,
-            "chunk_overlap": 25,
-            "similarity_threshold": 0.7,
-            "top_k": 10,
-            "embedding_model": "nomic-embed-text",
-            "llm_model": None
-        }
+        self._default_rag_config = DEFAULT_RAG_CONFIG.copy()
     
     def create_new_chat(self, clear_rag_callback: Optional[callable] = None) -> str:
         """

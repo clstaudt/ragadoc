@@ -92,24 +92,20 @@ def add_logo_and_title():
     logo_path = Path(__file__).parent.parent / "assets" / "logo.png"
     
     if logo_path.exists():
-        # Create a centered header with logo and title
-        col1, col2, col3 = st.columns([1, 2, 1])
-        
-        with col2:
-            # Logo and title in the center column
-            st.markdown("""
-            <div class="logo-header">
-                <img src="data:image/png;base64,{}" alt="ragadoc logo">
-                <h1 style="margin: 0; font-size: 2.5rem;">ragadoc - AI Document Assistant</h1>
-                <p style="margin: 0.5rem 0 0 0; font-style: italic; color: #b3b3b3;">
-                    Ask questions about your documents - get grounded answers with citations and highlights.
-                </p>
-            </div>
-            """.format(get_base64_logo(logo_path)), unsafe_allow_html=True)
+        # Compact header with logo and title using proper CSS classes for styling
+        st.markdown("""
+        <div class="logo-header" style="margin-bottom: 1rem;">
+            <img src="data:image/png;base64,{}" alt="ragadoc logo" style="width: 70px; height: auto;">
+            <h1 style="margin: 0.5rem 0 0 0; font-size: 2rem;">ragadoc - AI Document Assistant</h1>
+            <p style="margin: 0.3rem 0 0 0; font-style: italic; color: #b3b3b3; font-size: 0.9rem;">
+                Ask questions about your documents - get grounded answers with citations and highlights.
+            </p>
+        </div>
+        """.format(get_base64_logo(logo_path)), unsafe_allow_html=True)
     else:
-        # Fallback to text-only title if logo not found
-        st.title("ragadoc - AI Document Assistant")
-        st.markdown("*Ask questions about your documents - get grounded answers with citations and highlights*", unsafe_allow_html=True)
+        # Fallback to text-only title with proper gradient styling
+        st.markdown("<h1 style='font-size: 2rem; margin: 0 0 0.5rem 0; text-align: center;'>ragadoc - AI Document Assistant</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='margin: 0 0 1rem 0; font-style: italic; color: #b3b3b3; font-size: 0.9rem; text-align: center;'>Ask questions about your documents - get grounded answers with citations and highlights.</p>", unsafe_allow_html=True)
 
 
 def get_base64_logo(logo_path):

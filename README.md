@@ -17,6 +17,16 @@
 - ⚡ **Fast Processing** - Optimized document parsing and retrieval system
 - 🌐 **Easy Web Interface** - Simple Streamlit app, no technical knowledge required
 
+<div align="center">
+  <img src="assets/screenshot_01.png" alt="Ragadoc Main Interface" width="80%">
+  <p><em>Main chat interface with document upload and conversation</em></p>
+</div>
+
+<div align="center">
+  <img src="assets/screenshot_02.png" alt="Ragadoc Document Analysis" width="80%">
+  <p><em>Document analysis with citations and highlighted responses</em></p>
+</div>
+
 ## 🚀 Quick Start
 
 ### Model Selection Guide
@@ -158,9 +168,9 @@ The app automatically detects your installed Ollama models. Popular choices:
 ### Advanced Settings
 
 Configure in the sidebar:
-- **Chunk Size**: How much text to process at once (default: 512)
-- **Chunk Overlap**: Text overlap between chunks (default: 50)
-- **Top-K Results**: Number of relevant chunks to consider (default: 5)
+- **Chunk Size**: How much text to process at once
+- **Chunk Overlap**: Text overlap between chunks  
+- **Top-K Results**: Number of relevant chunks to consider
 
 
 

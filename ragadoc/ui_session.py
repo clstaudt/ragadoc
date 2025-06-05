@@ -13,6 +13,7 @@ from .chat_manager import ChatManager
 from .llm_interface import LLMInterface
 from .rag_system import create_rag_system
 from .ui_config import get_ollama_base_url, is_running_in_docker
+from .config import DEFAULT_RAG_CONFIG
 
 
 def init_session_state():
@@ -46,14 +47,7 @@ def init_session_state():
     
     # RAG configuration
     if "rag_config" not in st.session_state:
-        st.session_state.rag_config = {
-            "chunk_size": 256,
-            "chunk_overlap": 25,
-            "similarity_threshold": 0.7,
-            "top_k": 10,
-            "embedding_model": "nomic-embed-text",
-            "llm_model": None
-        }
+        st.session_state.rag_config = DEFAULT_RAG_CONFIG.copy()
     
     # Initialize RAG system
     if "rag_system" not in st.session_state:
