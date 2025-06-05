@@ -17,13 +17,13 @@ def render_sidebar():
     with st.sidebar:
         st.header("Settings")
         
-        # Global Model Selection
+        # Chat Model Selection
         try:
             available_models = st.session_state.model_manager.get_available_models()
             if available_models:
                 previous_model = st.session_state.selected_model
                 st.session_state.selected_model = st.selectbox(
-                    "🤖 Chat Model (Global):",
+                    "🤖 Chat Model:",
                     available_models,
                     index=0 if not st.session_state.selected_model else 
                           (available_models.index(st.session_state.selected_model) 
@@ -47,10 +47,10 @@ def render_sidebar():
             st.error(f"❌ Error connecting to Ollama: {e}")
             return
         
-        # Global Embedding Model Selection
+        # Embedding Model Selection
         previous_embedding_model = st.session_state.rag_config["embedding_model"]
         embedding_model = st.selectbox(
-            "🔍 Embedding Model (Global):", 
+            "🔍 Embedding Model:", 
             ["nomic-embed-text", "mxbai-embed-large", "all-minilm"], 
             index=0 if st.session_state.rag_config["embedding_model"] == "nomic-embed-text" else 
                   (1 if st.session_state.rag_config["embedding_model"] == "mxbai-embed-large" else 2),
@@ -68,16 +68,65 @@ def render_sidebar():
             st.info("⚠️ Embedding model changed. Upload a new document to apply changes.")
             st.rerun()
         
+        # Expert Mode Toggle
+        expert_mode = st.toggle(
+            "🔧 Expert Mode", 
+            value=st.session_state.get('expert_mode', False),
+            help="Show advanced RAG configuration settings"
+        )
+        st.session_state.expert_mode = expert_mode
+        
+        # RAG Configuration (only shown in expert mode)
+        if expert_mode:
+            with st.expander("🔍 RAG Settings", expanded=False):
+                # RAG parameters (excluding embedding model which is now global)
+                chunk_size = st.slider("Chunk Size (tokens)", 32, 1024, st.session_state.rag_config["chunk_size"], 64)
+                chunk_overlap = st.slider("Chunk Overlap (tokens)", 0, 200, st.session_state.rag_config["chunk_overlap"], 10)
+                similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, st.session_state.rag_config["similarity_threshold"], 0.05)
+                top_k = st.slider("Max Retrieved Chunks", 1, 20, st.session_state.rag_config["top_k"], 1)
+                
+                # Update configuration if changed (excluding embedding model)
+                new_config = {
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap, 
+                    "similarity_threshold": similarity_threshold,
+                    "top_k": top_k,
+                    "embedding_model": st.session_state.rag_config["embedding_model"]  # Keep current embedding model
+                }
+                
+                if new_config != st.session_state.rag_config:
+                    st.session_state.rag_config = new_config
+                    st.info("⚠️ RAG settings changed. Upload a new document to apply changes.")
+                
+                # RAG system status
+                if st.session_state.rag_system:
+                    st.success("✅ RAG System Ready")
+                    
+                    # Show available documents
+                    available_docs = st.session_state.rag_system.get_available_documents()
+                    if available_docs:
+                        st.info(f"📊 {len(available_docs)} document(s) in system")
+                        
+                        # Show current document for current chat
+                        current_chat = st.session_state.chat_manager.get_current_chat()
+                        if current_chat and current_chat.rag_processed:
+                            stats = current_chat.rag_stats or {}
+                            st.info(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
+                        else:
+                            st.warning("📄 No document in current chat")
+                    else:
+                        st.warning("📄 No documents processed yet")
+                else:
+                    st.error("❌ RAG System Not Available")
+                    if st.button("🔄 Retry RAG Initialization"):
+                        if "rag_system" in st.session_state:
+                            del st.session_state["rag_system"]
+                        init_rag_system()
+                        st.rerun()
+        
         st.divider()
         
         st.header("Chat History")
-        
-        # Connection info
-        ollama_base_url = get_ollama_base_url()
-        if is_running_in_docker():
-            st.caption(f"🐳 Docker → {ollama_base_url}")
-        else:
-            st.caption(f"💻 Direct → localhost:11434")
         
         # New chat button
         if st.button("New Chat", use_container_width=True, type="primary"):
@@ -89,57 +138,6 @@ def render_sidebar():
             
             st.session_state.chat_manager.create_new_chat()
             st.rerun()
-        
-        st.divider()
-        
-        # RAG Configuration
-        with st.expander("🔍 RAG Settings", expanded=False):
-            st.info("🔍 **Smart Retrieval**: The system first finds ALL chunks above the similarity threshold, then limits to the max number.")
-            
-            # RAG parameters (excluding embedding model which is now global)
-            chunk_size = st.slider("Chunk Size (tokens)", 32, 1024, st.session_state.rag_config["chunk_size"], 64)
-            chunk_overlap = st.slider("Chunk Overlap (tokens)", 0, 200, st.session_state.rag_config["chunk_overlap"], 10)
-            similarity_threshold = st.slider("Similarity Threshold", 0.0, 1.0, st.session_state.rag_config["similarity_threshold"], 0.05)
-            top_k = st.slider("Max Retrieved Chunks", 1, 20, st.session_state.rag_config["top_k"], 1)
-            
-            # Update configuration if changed (excluding embedding model)
-            new_config = {
-                "chunk_size": chunk_size,
-                "chunk_overlap": chunk_overlap, 
-                "similarity_threshold": similarity_threshold,
-                "top_k": top_k,
-                "embedding_model": st.session_state.rag_config["embedding_model"]  # Keep current embedding model
-            }
-            
-            if new_config != st.session_state.rag_config:
-                st.session_state.rag_config = new_config
-                st.info("⚠️ RAG settings changed. Upload a new document to apply changes.")
-            
-            # RAG system status
-            if st.session_state.rag_system:
-                st.success("✅ RAG System Ready")
-                
-                # Show available documents
-                available_docs = st.session_state.rag_system.get_available_documents()
-                if available_docs:
-                    st.info(f"📊 {len(available_docs)} document(s) in system")
-                    
-                    # Show current document for current chat
-                    current_chat = st.session_state.chat_manager.get_current_chat()
-                    if current_chat and current_chat.rag_processed:
-                        stats = current_chat.rag_stats or {}
-                        st.info(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
-                    else:
-                        st.warning("📄 No document in current chat")
-                else:
-                    st.warning("📄 No documents processed yet")
-            else:
-                st.error("❌ RAG System Not Available")
-                if st.button("🔄 Retry RAG Initialization"):
-                    if "rag_system" in st.session_state:
-                        del st.session_state["rag_system"]
-                    init_rag_system()
-                    st.rerun()
         
         st.divider()
         
