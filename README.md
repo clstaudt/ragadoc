@@ -219,21 +219,14 @@ curl http://localhost:11434/api/version
 OLLAMA_HOST=0.0.0.0:11434 ollama serve
 ```
 
-**No Models Available**
-```bash
-# Install required models
-ollama pull nomic-embed-text
-ollama pull qwen3:14b
-```
-
 **Slow Performance**
-- Try a smaller model like `mistral:latest`
-- Reduce chunk size in settings
+- Try next smaller model
+- Reduce chunk size in expert RAG settings
 - Ensure sufficient RAM is available
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
