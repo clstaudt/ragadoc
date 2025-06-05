@@ -23,12 +23,12 @@ Choose models based on your system capabilities:
 |------------|------------|------|--------------|----------|
 | **Embedding** | `nomic-embed-text` | ~274MB | 1GB | **Recommended** - General purpose |
 | **Embedding** | `all-minilm` | ~23MB | 512MB | Lightweight alternative |
-| **Chat** | `qwen3:14b` | ~8.5GB | 16GB | **Recommended** - Large model |
+| **Chat** | `qwen3:14b` | ~8.5GB | 16GB | **Recommended**  |
 | **Chat** | `llama3.1:8b` | ~4.7GB | 8GB | Balanced option |
 | **Chat** | `mistral:latest` | ~4.1GB | 8GB | Quick responses |
 | **Chat** | `phi3:mini` | ~2.3GB | 4GB | Low-resource systems |
 
-> **Recommendation**: Use `nomic-embed-text` for embeddings and `qwen3:14b` for chat if your system supports it. For lower-spec systems, try `mistral:latest` or `phi3:mini`.
+
 
 ### Prerequisites (Required for Both Installation Methods)
 
