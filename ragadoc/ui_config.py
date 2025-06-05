@@ -6,6 +6,7 @@ Handles environment detection and configuration setup for the Streamlit UI.
 
 import os
 import streamlit as st
+from pathlib import Path
 
 
 def is_running_in_docker():
@@ -25,11 +26,83 @@ def get_ollama_base_url():
         return "http://localhost:11434"
 
 
-def setup_streamlit_config():
-    """Configure Streamlit page settings"""
+def get_available_themes():
+    """Get list of available theme files"""
+    themes_dir = Path(__file__).parent / "themes"
+    if themes_dir.exists():
+        return [f.stem for f in themes_dir.glob("*.css")]
+    return []
+
+
+def load_css_file(css_file_path):
+    """Load CSS from external file"""
+    css_path = Path(__file__).parent / "themes" / css_file_path
+    if css_path.exists():
+        with open(css_path) as f:
+            return f.read()
+    return ""
+
+
+def apply_theme(theme_name="darkstreaming"):
+    """Apply selected theme with fallback support"""
+    css_content = load_css_file(f"{theme_name}.css")
+    
+    if css_content:
+        st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
+    else:
+        # Fallback to basic dark theme if file not found
+        apply_basic_dark_theme()
+
+
+def apply_basic_dark_theme():
+    """Minimal fallback dark theme"""
+    st.markdown("""
+    <style>
+    .stApp {
+        background: linear-gradient(180deg, #121212 0%, #0a0a0a 100%);
+        color: #ffffff;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(45deg, #FFB000, #FFC947);
+        color: #000;
+        border: none;
+        border-radius: 25px;
+        font-weight: 600;
+    }
+    
+    .stSelectbox > div > div {
+        background: #242424;
+        border: 1px solid #2a2a2a;
+        color: #ffffff;
+    }
+    
+    h1 {
+        background: linear-gradient(45deg, #FFB000, #FFC947);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def setup_streamlit_config(theme=None):
+    """Configure Streamlit page settings with customizable theme"""
     st.set_page_config(
-        page_title="ragadoc - AI-assisted Document Q&A", 
+        page_title="ragadoc - AI-powered Document Assistant", 
+        page_icon="📄",
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    st.title("ragadoc - AI-assisted Document Q&A") 
+    
+    # Determine theme: parameter > environment variable > default
+    if theme is None:
+        theme = os.environ.get('RAGADOC_THEME', 'darkstreaming')
+    
+    # Apply the selected theme
+    apply_theme(theme)
+    
+    # Clean title
+    st.title("ragadoc - AI Document Assistant")
+    st.markdown("*Experience your documents like never before*", unsafe_allow_html=True) 

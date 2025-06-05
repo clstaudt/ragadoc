@@ -1,0 +1,210 @@
+/* DarkStreaming Theme for Streamlit Apps
+ * A modern, streaming-inspired dark theme with green accents
+ * Easy to customize by modifying CSS variables
+ */
+
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* Theme Variables - Easy to Customize */
+:root {
+    --primary-gold: #FFB000;
+    --accent-gold: #FFC947;
+    --dark-bg: #121212;
+    --darker-bg: #0a0a0a;
+    --surface-bg: #1a1a1a;
+    --elevated-bg: #242424;
+    --text-primary: #ffffff;
+    --text-secondary: #b3b3b3;
+    --border-color: #2a2a2a;
+    --hover-color: #2a2a2a;
+}
+
+/* Base App Styling */
+.stApp {
+    background: linear-gradient(180deg, var(--dark-bg) 0%, var(--darker-bg) 100%);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Hide Streamlit Branding */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+
+/* Typography */
+h1 {
+    background: linear-gradient(45deg, var(--primary-gold), var(--accent-gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700 !important;
+    font-size: 2.5rem !important;
+}
+
+h2, h3, h4, h5, h6 {
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
+}
+
+/* Sidebar */
+.css-1d391kg {
+    background: var(--surface-bg) !important;
+    border-right: 1px solid var(--border-color);
+}
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(45deg, var(--primary-gold), var(--accent-gold)) !important;
+    color: var(--dark-bg) !important;
+    border: none !important;
+    border-radius: 25px !important;
+    padding: 0.5rem 2rem !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(255, 176, 0, 0.4) !important;
+    filter: brightness(1.1) !important;
+}
+
+/* Input Elements */
+.stSelectbox > div > div,
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea {
+    background: var(--elevated-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    color: var(--text-primary) !important;
+}
+
+.stSelectbox > div > div:hover,
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--primary-gold) !important;
+    box-shadow: 0 0 0 1px var(--primary-gold) !important;
+}
+
+/* File Uploader */
+.stFileUploader > div {
+    background: var(--elevated-bg) !important;
+    border: 2px dashed var(--border-color) !important;
+    border-radius: 12px !important;
+    transition: all 0.3s ease !important;
+}
+
+.stFileUploader > div:hover {
+    border-color: var(--primary-gold) !important;
+    background: var(--hover-color) !important;
+}
+
+/* Chat Messages */
+.stChatMessage {
+    background: var(--surface-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 12px !important;
+    margin: 0.5rem 0 !important;
+    padding: 1rem !important;
+}
+
+.stChatMessage[data-testid="user-message"] {
+    background: linear-gradient(135deg, var(--primary-gold), var(--accent-gold)) !important;
+    color: var(--dark-bg) !important;
+    margin-left: 2rem !important;
+}
+
+.stChatMessage[data-testid="assistant-message"] {
+    background: var(--elevated-bg) !important;
+    margin-right: 2rem !important;
+}
+
+/* Progress Elements */
+.stProgress > div > div > div,
+.stSlider > div > div > div > div {
+    background: var(--primary-gold) !important;
+}
+
+/* Expanders */
+.streamlit-expanderHeader {
+    background: var(--elevated-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 8px !important;
+    color: var(--text-primary) !important;
+}
+
+.streamlit-expanderContent {
+    background: var(--surface-bg) !important;
+    border: 1px solid var(--border-color) !important;
+    border-top: none !important;
+}
+
+/* Alert Messages */
+.stSuccess {
+    background: rgba(255, 176, 0, 0.1) !important;
+    border: 1px solid var(--primary-gold) !important;
+    color: var(--accent-gold) !important;
+}
+
+.stWarning {
+    background: rgba(255, 193, 7, 0.1) !important;
+    border: 1px solid #ffc107 !important;
+    color: #ffc107 !important;
+}
+
+.stError {
+    background: rgba(220, 53, 69, 0.1) !important;
+    border: 1px solid #dc3545 !important;
+    color: #ff6b6b !important;
+}
+
+.stInfo {
+    background: rgba(13, 202, 240, 0.1) !important;
+    border: 1px solid #0dcaf0 !important;
+    color: #0dcaf0 !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--surface-bg);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-gold);
+}
+
+/* Links */
+a {
+    color: var(--primary-gold) !important;
+    text-decoration: none !important;
+}
+
+a:hover {
+    color: var(--accent-gold) !important;
+    text-decoration: underline !important;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    h1 { font-size: 2rem !important; }
+    
+    .stChatMessage[data-testid="user-message"] {
+        margin-left: 0.5rem !important;
+    }
+    
+    .stChatMessage[data-testid="assistant-message"] {
+        margin-right: 0.5rem !important;
+    }
+} 
