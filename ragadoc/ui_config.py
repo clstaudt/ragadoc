@@ -87,6 +87,42 @@ def apply_basic_dark_theme():
     """, unsafe_allow_html=True)
 
 
+def add_logo_and_title():
+    """Add logo and title to the app header"""
+    logo_path = Path(__file__).parent.parent / "assets" / "logo.png"
+    
+    if logo_path.exists():
+        # Create a centered header with logo and title
+        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        with col2:
+            # Logo and title in the center column
+            st.markdown("""
+            <div class="logo-header">
+                <img src="data:image/png;base64,{}" alt="ragadoc logo">
+                <h1 style="margin: 0; font-size: 2.5rem;">ragadoc - AI Document Assistant</h1>
+                <p style="margin: 0.5rem 0 0 0; font-style: italic; color: #b3b3b3;">
+                    Ask questions about your documents - get grounded answers with citations and highlights.
+                </p>
+            </div>
+            """.format(get_base64_logo(logo_path)), unsafe_allow_html=True)
+    else:
+        # Fallback to text-only title if logo not found
+        st.title("ragadoc - AI Document Assistant")
+        st.markdown("*Ask questions about your documents - get grounded answers with citations and highlights*", unsafe_allow_html=True)
+
+
+def get_base64_logo(logo_path):
+    """Convert logo to base64 for embedding in HTML"""
+    import base64
+    
+    try:
+        with open(logo_path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return ""
+
+
 def setup_streamlit_config(theme=None):
     """Configure Streamlit page settings with customizable theme"""
     st.set_page_config(
@@ -103,6 +139,5 @@ def setup_streamlit_config(theme=None):
     # Apply the selected theme
     apply_theme(theme)
     
-    # Clean title
-    st.title("ragadoc - AI Document Assistant")
-    st.markdown("*Experience your documents like never before*", unsafe_allow_html=True) 
+    # Add logo and title
+    add_logo_and_title() 

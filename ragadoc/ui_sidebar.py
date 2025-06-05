@@ -128,8 +128,8 @@ def render_sidebar():
         
         st.header("Chat History")
         
-        # New chat button
-        if st.button("New Chat", use_container_width=True, type="primary"):
+        # New chat button - prominent golden button
+        if st.button("➕ New Chat", use_container_width=True, type="primary"):
             # Stop any ongoing generation before creating new chat
             if st.session_state.get('generating', False):
                 st.session_state.stop_generation = True
@@ -141,47 +141,69 @@ def render_sidebar():
         
         st.divider()
         
-        # Chat history
+        # Chat history using container with custom styling
         sorted_chats = st.session_state.chat_manager.get_sorted_chats()
         if sorted_chats:
             for chat_id, chat_session in sorted_chats:
-                col1, col2 = st.columns([4, 1])
+                is_current = chat_id == st.session_state.chat_manager.current_chat_id
                 
-                with col1:
-                    is_current = chat_id == st.session_state.chat_manager.current_chat_id
-                    button_type = "primary" if is_current else "secondary"
+                # Create a container for each chat item
+                chat_container = st.container()
+                with chat_container:
+                    col1, col2 = st.columns([4, 1])
                     
-                    if st.button(chat_session.title, key=f"chat-{chat_id}", 
-                               use_container_width=True, type=button_type):
-                        # Stop any ongoing generation before switching
-                        if st.session_state.get('generating', False):
-                            st.session_state.stop_generation = True
-                            st.session_state.generating = False
-                            logger.info("Stopped ongoing generation due to chat switch")
-                        
-                        # Switch to the chat
-                        st.session_state.chat_manager.switch_to_chat(chat_id)
-                        
-                        # Load the appropriate document for this chat if it has one
-                        if chat_session.document_id and st.session_state.rag_system:
-                            try:
-                                success = st.session_state.rag_system.load_document(chat_session.document_id)
-                                if success:
-                                    logger.info(f"Loaded document {chat_session.document_id} for chat {chat_id}")
-                                else:
-                                    logger.warning(f"Could not load document {chat_session.document_id} for chat {chat_id}")
-                            except Exception as e:
-                                logger.error(f"Error loading document for chat {chat_id}: {e}")
-                        
-                        st.rerun()
-                
-                with col2:
-                    if st.button("×", key=f"del-{chat_id}", help="Delete"):
-                        # Stop any ongoing generation before deleting chat
-                        if st.session_state.get('generating', False):
-                            st.session_state.stop_generation = True
-                            st.session_state.generating = False
-                            logger.info("Stopped ongoing generation due to chat deletion")
-                        
-                        st.session_state.chat_manager.delete_chat(chat_id)
-                        st.rerun() 
+                    with col1:
+                        # All chats use the same emoji, different styling for selection
+                        if is_current:
+                            # Current chat - highlighted with primary styling
+                            st.button(
+                                f"💬 {chat_session.title}",
+                                key=f"chat-{chat_id}",
+                                use_container_width=True,
+                                type="primary",
+                                help="Current chat",
+                                disabled=True  # Disabled to show it's selected
+                            )
+                        else:
+                            # Inactive chat - secondary styling
+                            if st.button(
+                                f"💬 {chat_session.title}",
+                                key=f"chat-{chat_id}",
+                                use_container_width=True,
+                                type="secondary",
+                                help="Click to switch to this chat"
+                            ):
+                                # Stop any ongoing generation before switching
+                                if st.session_state.get('generating', False):
+                                    st.session_state.stop_generation = True
+                                    st.session_state.generating = False
+                                    logger.info("Stopped ongoing generation due to chat switch")
+                                
+                                # Switch to the chat
+                                st.session_state.chat_manager.switch_to_chat(chat_id)
+                                
+                                # Load the appropriate document for this chat if it has one
+                                if chat_session.document_id and st.session_state.rag_system:
+                                    try:
+                                        success = st.session_state.rag_system.load_document(chat_session.document_id)
+                                        if success:
+                                            logger.info(f"Loaded document {chat_session.document_id} for chat {chat_id}")
+                                        else:
+                                            logger.warning(f"Could not load document {chat_session.document_id} for chat {chat_id}")
+                                    except Exception as e:
+                                        logger.error(f"Error loading document for chat {chat_id}: {e}")
+                                
+                                st.rerun()
+                    
+                    with col2:
+                        if st.button("×", key=f"del-{chat_id}", help="Delete", type="secondary"):
+                            # Stop any ongoing generation before deleting chat
+                            if st.session_state.get('generating', False):
+                                st.session_state.stop_generation = True
+                                st.session_state.generating = False
+                                logger.info("Stopped ongoing generation due to chat deletion")
+                            
+                            st.session_state.chat_manager.delete_chat(chat_id)
+                            st.rerun()
+        else:
+            st.write("*No chat history yet*") 
