@@ -128,12 +128,6 @@ Choose your preferred installation method:
 4. **View Citations** - See highlighted text in the PDF that supports each answer
 5. **Explore** - Continue the conversation to dive deeper into your document
 
-### Example Questions
-
-- "What are the main conclusions of this research paper?"
-- "Summarize the financial results from Q3"
-- "What methodology was used in the study?"
-- "List all the recommendations mentioned"
 
 ## 🏗️ Architecture
 
@@ -154,64 +148,7 @@ User Question → Semantic Search → Context Retrieval → AI Response
 - **PDF Processing**: PyMuPDF4LLM for structure-aware extraction
 - **Embeddings**: nomic-embed-text model
 
-## 🔧 Configuration
 
-### Available Models
-
-The app automatically detects your installed Ollama models. Popular choices:
-
-- **qwen3:14b** - Well-balanced performance and accuracy (recommended)
-- **llama3.1:8b** - Good alternative option
-- **mistral:latest** - Fast and efficient
-- **codellama:latest** - Good for technical documents
-
-### Advanced Settings
-
-Configure in the sidebar:
-- **Chunk Size**: How much text to process at once
-- **Chunk Overlap**: Text overlap between chunks  
-- **Top-K Results**: Number of relevant chunks to consider
-
-
-
-## 🧪 Testing
-
-Run the test suite:
-
-```bash
-pytest tests/ -v
-```
-
-Test the RAG system specifically:
-
-```bash
-python experiments/test_rag.py
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Here's how to get started:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests for new functionality
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Development Setup
-
-```bash
-# Install development dependencies
-pip install -r requirements.txt
-
-# Run tests
-pytest
-
-# Run linting
-flake8 ragadoc/
-```
 
 ## 🐛 Troubleshooting
 
