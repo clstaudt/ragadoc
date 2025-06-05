@@ -56,7 +56,7 @@ class RAGSystem:
         self, 
         ollama_base_url: str = "http://localhost:11434",
         embedding_model: str = DEFAULT_EMBEDDING_MODEL,
-        llm_model: str = "olmo2:13b",
+        llm_model: str = "tinyllama:latest",
         chunk_size: int = DEFAULT_CHUNK_SIZE,
         chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
         similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD,

@@ -3,6 +3,12 @@ Simple test fixtures for smoke tests
 """
 import pytest
 import fitz
+from .test_utils import check_test_environment
+
+
+# Ensure test environment is ready when tests start
+if not check_test_environment():
+    pytest.exit("Test environment setup failed. Please check Ollama installation and service.", returncode=1)
 
 
 @pytest.fixture

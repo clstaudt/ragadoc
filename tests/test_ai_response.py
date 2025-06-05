@@ -14,7 +14,7 @@ from ragadoc.model_manager import ModelManager
 
 # Known available models
 EMBEDDING_MODEL = "nomic-embed-text:latest"
-LLM_MODEL = "olmo2:13b"
+LLM_MODEL = "tinyllama:latest"
 
 
 def is_ollama_available():
