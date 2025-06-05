@@ -119,15 +119,10 @@ def generate_response_with_ui(prompt, current_chat):
         reasoning_placeholder = st.empty()
         answer_placeholder = st.empty()
         stop_container = st.container()
+        loading_placeholder = st.empty()
         
-        # Show stop button
-        with stop_container:
-            stop_button_placeholder = st.empty()
-            with stop_button_placeholder.container():
-                col1, col2 = st.columns([10, 1])
-                with col2:
-                    if st.button("⏹", key=f"stop_gen_{hash(prompt)}", help="Stop generation"):
-                        st.session_state.stop_generation = True
+        # Prepare for aligned loading message and stop button
+        stop_button_placeholder = st.empty()
         
         # Generate response with streaming
         full_response = ""
@@ -136,6 +131,7 @@ def generate_response_with_ui(prompt, current_chat):
         reasoning_started = False
         in_reasoning = False
         generation_stopped = False
+        first_chunk_received = False
         
         # Use direct ollama streaming with RAG context
         system_prompt = PromptBuilder.create_system_prompt(context_text, is_rag=True)
@@ -148,6 +144,7 @@ def generate_response_with_ui(prompt, current_chat):
         ollama_base_url = get_ollama_base_url()
         in_docker = is_running_in_docker()
         
+        # Create chat stream
         if in_docker:
             client = ollama.Client(host=ollama_base_url)
             chat_stream = client.chat(
@@ -162,10 +159,29 @@ def generate_response_with_ui(prompt, current_chat):
                 stream=True
             )
         
+        # Show loading message and stop button aligned
+        with loading_placeholder.container():
+            col1, col2 = st.columns([10, 1])
+            with col1:
+                st.write("⏳ Processing...")
+            with col2:
+                if st.button("⏹", key=f"stop_gen_{hash(prompt)}", help="Stop generation"):
+                    st.session_state.stop_generation = True
+        
         # Handle streaming response with reasoning support
         chunk_count = 0
+        has_content = False
         for chunk in chat_stream:
             chunk_count += 1
+            
+            # Check if this chunk has actual content
+            if chunk['message']['content']:
+                has_content = True
+            
+            # Clear loading spinner on first chunk with actual content
+            if has_content and not first_chunk_received:
+                first_chunk_received = True
+                loading_placeholder.empty()  # Clear the spinner
             
             # Check if user wants to stop on every chunk for responsiveness
             if st.session_state.get('stop_generation', False):
@@ -218,6 +234,10 @@ def generate_response_with_ui(prompt, current_chat):
         
         # Handle stopped generation
         if generation_stopped or st.session_state.get('stop_generation', False):
+            # Clear loading spinner if still showing when stopped
+            if not first_chunk_received:
+                loading_placeholder.empty()
+                
             final_answer = answer_content if reasoning_started else full_response
             if final_answer.strip():
                 final_answer += "\n\n*[Generation stopped by user]*"
@@ -230,14 +250,11 @@ def generate_response_with_ui(prompt, current_chat):
             elif not reasoning_started:
                 answer_placeholder.markdown(final_answer)
             
-            # Show stopped message and remove stop button
+            # Show stopped message
             with stop_container:
-                stop_button_placeholder.empty()
                 st.info("🛑 Generation stopped by user")
-        else:
-            # Clear stop button when generation completes normally
-            with stop_container:
-                stop_button_placeholder.empty()
+        # Clear the entire loading container (which includes the stop button)
+        # This happens for both stopped and completed generation
         
         # Show method information
         st.info("🔍 Response generated using RAG (semantic search)")
@@ -255,12 +272,17 @@ def generate_response_with_ui(prompt, current_chat):
         return final_answer
         
     except Exception as e:
+        # Clear loading spinner if still showing in case of error
+        if not first_chunk_received:
+            loading_placeholder.empty()
         st.error(f"Error generating response: {e}")
         return ""
     finally:
         # Reset generation state
         st.session_state.generating = False
         st.session_state.stop_generation = False
+        # Ensure loading spinner is cleared
+        loading_placeholder.empty()
 
 
 def render_chat_interface():
