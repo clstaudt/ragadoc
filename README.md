@@ -124,7 +124,11 @@ get started by docker compose.
 
 2. **Start with Docker Compose**:
    ```bash
+   # if you don't have a GPU
    docker-compose up
+   
+   # if you have a GPU
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
    ```
 
 3. **Install models**
