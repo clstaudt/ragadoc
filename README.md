@@ -27,6 +27,10 @@
   <p><em>Document analysis with citations and highlighted responses</em></p>
 </div>
 
+> ⚠️ **Warning: Proof of Concept, Early Development**
+> 
+> This application is currently in early development and should be considered a proof of concept. Features may be incomplete, unstable, or subject to significant changes. Use at your own discretion and expect potential bugs or breaking changes in future updates.
+
 ## 🚀 Quick Start
 
 ### Model Selection Guide
