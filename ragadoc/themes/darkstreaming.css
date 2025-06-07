@@ -27,11 +27,6 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* Hide Streamlit Branding */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-header { visibility: hidden; }
-
 /* Typography */
 h1 {
     background: linear-gradient(45deg, var(--primary-gold), var(--accent-gold));

@@ -1,0 +1,24 @@
+[theme]
+# Set dark theme as default
+base = "dark"
+primaryColor = "#FFB000"  # Gold accent matching darkstreaming theme
+backgroundColor = "#121212"  # Dark background matching darkstreaming theme
+secondaryBackgroundColor = "#1a1a1a"  # Surface background matching darkstreaming theme
+textColor = "#ffffff"  # White text matching darkstreaming theme
+
+[browser]
+# Gather usage stats for better performance insights
+gatherUsageStats = false
+
+[server]
+# Disable CORS protection for development
+enableCORS = false
+enableXsrfProtection = false
+
+# File watcher settings for better development experience
+fileWatcherType = "auto"
+runOnSave = false
+
+[client]
+# Display connection status for debugging
+showErrorDetails = true 

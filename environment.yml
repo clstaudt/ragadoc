@@ -14,7 +14,7 @@ dependencies:
   - pdfplumber
   - pip:
     - ollama
-    - streamlit-pdf-viewer
+    - streamlit-pdf-viewer>=0.0.24
     - PyMuPDF
     - loguru
     - tiktoken

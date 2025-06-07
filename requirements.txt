@@ -1,7 +1,7 @@
 # Core dependencies
 streamlit
 ollama
-streamlit-pdf-viewer
+streamlit-pdf-viewer>=0.0.24  # Pinned to prevent annotation parameter issues
 PyPDF2
 pdfplumber
 PyMuPDF

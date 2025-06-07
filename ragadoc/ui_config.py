@@ -26,26 +26,18 @@ def get_ollama_base_url():
         return "http://localhost:11434"
 
 
-def get_available_themes():
-    """Get list of available theme files"""
-    themes_dir = Path(__file__).parent / "themes"
-    if themes_dir.exists():
-        return [f.stem for f in themes_dir.glob("*.css")]
-    return []
-
-
-def load_css_file(css_file_path):
-    """Load CSS from external file"""
-    css_path = Path(__file__).parent / "themes" / css_file_path
+def load_darkstreaming_theme():
+    """Load the darkstreaming CSS theme"""
+    css_path = Path(__file__).parent / "themes" / "darkstreaming.css"
     if css_path.exists():
         with open(css_path) as f:
             return f.read()
     return ""
 
 
-def apply_theme(theme_name="darkstreaming"):
-    """Apply selected theme with fallback support"""
-    css_content = load_css_file(f"{theme_name}.css")
+def apply_darkstreaming_theme():
+    """Apply the darkstreaming theme with fallback support"""
+    css_content = load_darkstreaming_theme()
     
     if css_content:
         st.markdown(f"<style>{css_content}</style>", unsafe_allow_html=True)
@@ -119,8 +111,8 @@ def get_base64_logo(logo_path):
         return ""
 
 
-def setup_streamlit_config(theme=None):
-    """Configure Streamlit page settings with customizable theme"""
+def setup_streamlit_config():
+    """Configure Streamlit page settings with darkstreaming theme"""
     st.set_page_config(
         page_title="ragadoc - AI-powered Document Assistant", 
         page_icon="📄",
@@ -128,12 +120,8 @@ def setup_streamlit_config(theme=None):
         initial_sidebar_state="expanded"
     )
     
-    # Determine theme: parameter > environment variable > default
-    if theme is None:
-        theme = os.environ.get('RAGADOC_THEME', 'darkstreaming')
-    
-    # Apply the selected theme
-    apply_theme(theme)
+    # Apply the darkstreaming theme
+    apply_darkstreaming_theme()
     
     # Add logo and title
     add_logo_and_title() 
