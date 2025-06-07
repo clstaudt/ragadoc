@@ -21,5 +21,4 @@ runOnSave = false
 
 [client]
 # Display connection status for debugging
-showErrorDetails = true
-toolbarMode = "minimal" 
+showErrorDetails = true 
