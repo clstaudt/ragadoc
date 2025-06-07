@@ -315,6 +315,7 @@ def render_chat_interface():
                         width="100%",
                         height=600,
                         render_text=True,
+                        annotations=[],  # Explicitly provide empty annotations list
                         key=f"pdf_viewer_{current_chat.id}"
                     )
                 

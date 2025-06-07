@@ -408,6 +408,7 @@ class EnhancedPDFProcessor:
                     "width": "100%",
                     "height": 900,
                     "render_text": True,
+                    "annotations": [],  # Explicitly provide empty annotations list
                     "key": f"inline_highlighted_pdf_{hash(ai_response)}",
                 }
 
