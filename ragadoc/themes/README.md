@@ -1,104 +1,76 @@
-# 🎨 Theme System
+# 🎨 Darkstreaming Theme
 
-This directory contains CSS theme files for the ragadoc Streamlit application.
+This directory contains the darkstreaming CSS theme for the ragadoc Streamlit application.
 
-## Available Themes
+## Theme
 
-- **darkstreaming.css** - Modern dark theme with streaming-inspired design and green accents
-- **classic.css** - Clean, professional light theme with blue accents
+**darkstreaming.css** - Modern dark theme with streaming-inspired design and gold accents
 
-## How to Use
+## Usage
 
-### Default Usage
-The app uses the `darkstreaming` theme by default:
+The darkstreaming theme is automatically applied when you run the application:
 
 ```python
 from ragadoc import setup_streamlit_config
-setup_streamlit_config()  # Uses darkstreaming theme
+setup_streamlit_config()  # Always uses darkstreaming theme
 ```
 
-### Switch Themes
-To use a different theme:
+## Theme Features
 
-```python
-from ragadoc import setup_streamlit_config
-setup_streamlit_config(theme="classic")  # Uses classic theme
-```
-
-### Environment-Based Theme Selection
-You can also set themes via environment variables:
-
-```bash
-export RAGADOC_THEME=classic
-streamlit run app.py
-```
-
-## Creating New Themes
-
-### 1. Create a CSS File
-Create a new `.css` file in this directory (e.g., `mytheme.css`):
-
-```css
-/* My Custom Theme */
-:root {
-    --primary-color: #your-color;
-    --bg-color: #your-bg;
-    /* Define your variables */
-}
-
-.stApp {
-    background: var(--bg-color);
-    /* Your styling */
-}
-
-/* Style other components */
-.stButton > button {
-    background: var(--primary-color);
-}
-```
-
-### 2. Use Your Theme
-```python
-setup_streamlit_config(theme="mytheme")
-```
+- **Modern Dark Design**: Sleek dark background with gold accents
+- **Streaming-Inspired**: Professional appearance suitable for AI applications  
+- **Responsive**: Mobile-friendly responsive design
+- **Custom Components**: Styled Streamlit components including buttons, inputs, and chat messages
+- **Typography**: Clean Inter font with proper contrast ratios
+- **Visual Effects**: Gradients, shadows, and hover animations
 
 ## Theme Structure
 
 ### CSS Variables
-Use CSS variables for easy customization:
-- `--primary-color` - Main brand color
-- `--accent-color` - Secondary accent color  
-- `--bg-color` - Background color
-- `--text-color` - Text color
-- `--border-color` - Border color
+The theme uses CSS variables for consistency:
+- `--primary-gold: #FFB000` - Main brand color (gold)
+- `--accent-gold: #FFC947` - Secondary accent color
+- `--dark-bg: #121212` - Main background color  
+- `--darker-bg: #0a0a0a` - Darker background for gradients
+- `--surface-bg: #1a1a1a` - Surface/card backgrounds
+- `--elevated-bg: #242424` - Input and elevated element backgrounds
+- `--text-primary: #ffffff` - Primary text color
+- `--text-secondary: #b3b3b3` - Secondary text color
+- `--border-color: #2a2a2a` - Border color
+- `--hover-color: #2a2a2a` - Hover state color
 
-### Key Streamlit Classes
-Important CSS classes to style:
-- `.stApp` - Main application container
-- `.stButton > button` - Buttons
-- `.stSelectbox > div > div` - Select boxes
-- `.stTextInput > div > div > input` - Text inputs
-- `.stChatMessage` - Chat messages
-- `.css-1d391kg` - Sidebar
+### Key Styled Components
+- `.stApp` - Main application container with gradient background
+- `.stButton > button` - Golden gradient buttons with hover effects
+- `.stSelectbox > div > div` - Dark select boxes with gold focus states
+- `.stTextInput > div > div > input` - Dark text inputs with gold accents
+- `.stChatMessage` - Chat message styling with user/assistant differentiation
+- `.css-1d391kg` - Sidebar with dark surface background
 
 ## Fallback System
 
-If a theme file doesn't exist, the system automatically falls back to a basic dark theme to ensure the app always has styling.
+If the darkstreaming.css file is missing, the system automatically falls back to a basic dark theme to ensure the app always has proper styling.
 
-## Best Practices
+## Customization
 
-1. **Use CSS Variables** - Makes themes easy to customize
-2. **Keep It Focused** - Only style what you need to change
-3. **Test Responsiveness** - Include mobile-friendly styles
-4. **Comment Your Code** - Help others understand your theme
-5. **Follow Naming Conventions** - Use descriptive theme names
+To customize the theme, edit the CSS variables at the top of `darkstreaming.css`:
 
-## Contributing
+```css
+:root {
+    --primary-gold: #your-new-color;
+    --accent-gold: #your-accent-color;
+    /* Modify other variables as needed */
+}
+```
 
-To contribute a new theme:
-1. Create a new CSS file following the naming convention
-2. Test it thoroughly with the app
-3. Add it to the list of available themes in this README
-4. Submit a pull request
+## Technical Details
 
-Happy theming! 🎨 
+- Uses modern CSS features including CSS Grid, Flexbox, and CSS Variables
+- Includes webkit scrollbar styling for consistent appearance
+- Responsive design with mobile breakpoints
+- Proper accessibility considerations with sufficient color contrast
+- Optimized for Streamlit's component structure
+
+---
+
+**The darkstreaming theme provides a professional, modern appearance perfect for AI document processing applications.** 🎨 
