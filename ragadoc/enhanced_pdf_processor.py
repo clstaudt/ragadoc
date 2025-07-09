@@ -419,23 +419,7 @@ class EnhancedPDFProcessor:
 
             return len(citation_quotes)
         else:
-            st.caption("💬 No citations found in response")
-            # IMPROVED: Provide helpful feedback about citation format
-            with st.expander("💡 Citation Format Help", expanded=False):
-                st.markdown("""
-                **For better citation highlighting, encourage the AI to use this format:**
-                
-                ```
-                [1] "exact quote from document"
-                [2] "another exact quote from document"
-                ```
-                
-                **Tips for better highlighting:**
-                - Quotes should be at least 4-5 words long
-                - Include enough context around key information
-                - Use verbatim text from the document
-                - Avoid very short snippets like single numbers or words
-                """)
+            st.caption("No citations found in response")
             return 0
 
     def _extract_quotes_from_ai_response(self, ai_response: str, user_question: str = "") -> Dict[int, str]:
