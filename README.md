@@ -47,18 +47,24 @@ Choose models based on your system capabilities:
 | **Chat** | `phi3:mini` | ~2.3GB | 4GB | Low-resource systems |
 
 
+### Installation Options
 
-### Prerequisites (Required for Both Installation Methods)
+Choose your preferred installation method:
 
-**1. Install Ollama** (for local AI models):
+### Option 1: Direct Installation
+
+**Prerequisite: Ollama (for local AI models)**
+
+Install Ollama
+
 ```bash
 # macOS
 brew install ollama
 
 # Or download from https://ollama.com
 ```
+ Start Ollama and install required models
 
-**2. Start Ollama and install required models**:
 ```bash
 ollama serve
 
@@ -69,11 +75,7 @@ ollama pull nomic-embed-text
 ollama pull qwen3:14b
 ```
 
-### Installation Options
 
-Choose your preferred installation method:
-
-### Option 1: Direct Installation
 
 **Additional Prerequisites:**
 - Python 3.8+
@@ -106,7 +108,10 @@ Choose your preferred installation method:
 
 ### Option 2: Docker Installation
 
-**Additional Prerequisites:**
+With this option, you don't need to separately install Ollama, it will automatically
+get started by docker compose.
+
+**Prerequisites:**
 - Docker and Docker Compose
 
 **Installation Steps:**
@@ -119,10 +124,24 @@ Choose your preferred installation method:
 
 2. **Start with Docker Compose**:
    ```bash
+   # if you don't have a GPU
    docker-compose up
+   
+   # if you have a GPU
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
    ```
 
-3. **Open your browser** to `http://localhost:8501`
+3. **Install models**
+
+   ```
+   # embedding model
+   docker exec -it ollama ollama pull nomic-embed-text
+   
+   # chat model
+   docker exec -it ollama ollama pull qwen3:14b
+   ```
+
+4. **Open your browser** to `http://localhost:8501`
 
 ## 📖 How to Use
 
