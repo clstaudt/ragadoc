@@ -272,7 +272,6 @@ class RAGSystem:
             
             # Test the index immediately
             logger.info("Testing index retrieval...")
-            from llama_index.core.retrievers import VectorIndexRetriever
             test_retriever = VectorIndexRetriever(index=self.index, similarity_top_k=3)
             test_nodes = test_retriever.retrieve("test query")
             logger.info(f"Test retrieval returned {len(test_nodes)} nodes")

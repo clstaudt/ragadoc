@@ -7,6 +7,7 @@ This module handles all interactions with Ollama models including:
 - Context window analysis
 """
 
+import httpx
 import ollama
 import re
 from typing import List, Dict, Any, Optional
@@ -85,7 +86,6 @@ class ModelManager:
     def _get_model_info_raw(self, model_name: str) -> Optional[Dict[str, Any]]:
         """Get model info via raw HTTP request (fallback for version mismatches)"""
         try:
-            import httpx
             response = httpx.post(
                 f"{self.ollama_base_url}/api/show",
                 json={"name": model_name},

@@ -4,6 +4,7 @@ UI Configuration and Environment Detection
 Handles environment detection and configuration setup for the Streamlit UI.
 """
 
+import base64
 import os
 import streamlit as st
 from pathlib import Path
@@ -102,8 +103,6 @@ def add_logo_and_title():
 
 def get_base64_logo(logo_path):
     """Convert logo to base64 for embedding in HTML"""
-    import base64
-    
     try:
         with open(logo_path, "rb") as f:
             return base64.b64encode(f.read()).decode()
