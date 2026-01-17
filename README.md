@@ -3,54 +3,33 @@
   
   # ragadoc
   
-  **An AI document assistant that answers questions about your PDFs with citations and highlights them directly in the document.**
+  **AI document assistant that answers questions about your PDFs with citations and highlights.**
   
-  <p><em>Ragadoc is a privacy-first Streamlit application that lets you chat with your documents using locally-run AI models. Ask questions, get grounded answers with citations, and see exactly where the information comes from with automatic PDF highlighting.</em></p>
+  <p><em>Privacy-first Streamlit app for chatting with documents using local AI models.</em></p>
 </div>
 
-## ✨ Key Features
+## ✨ Features
 
-- 🤖 **AI Document Q&A** - Ask natural language questions about your PDFs
-- 📍 **Citation Grounding** - Every answer includes specific citations from your document
-- 🎯 **PDF Highlighting** - Citations are automatically highlighted in the original PDF
-- 🔒 **Complete Privacy** - Uses only local AI models, your documents never leave your computer
-- ⚡ **Fast Processing** - Optimized document parsing and retrieval system
-- 🌐 **Easy Web Interface** - Simple Streamlit app, no technical knowledge required
+- 🤖 **AI Document Q&A** - Natural language questions about your PDFs
+- 📍 **Citation Grounding** - Answers include specific citations from your document
+- 🎯 **PDF Highlighting** - Citations automatically highlighted in the PDF
+- 🔒 **Complete Privacy** - Local AI models only, documents never leave your computer
 
 <div align="center">
   <img src="assets/screenshot_01.png" alt="Ragadoc Main Interface" width="80%">
-  <p><em>Main chat interface with document upload and conversation</em></p>
 </div>
 
 <div align="center">
   <img src="assets/screenshot_02.png" alt="Ragadoc Document Analysis" width="80%">
-  <p><em>Document analysis with citations and highlighted responses</em></p>
 </div>
 
-> ⚠️ **Warning: Proof of Concept, Early Development**
-> 
-> This application is currently in early development and should be considered a proof of concept. Features may be incomplete, unstable, or subject to significant changes. Use at your own discretion and expect potential bugs or breaking changes in future updates.
+> ⚠️ **Early Development** - This is a proof of concept. Expect incomplete features and potential breaking changes.
 
 ## 🚀 Quick Start
 
-### Model Selection Guide
+### Prerequisites
 
-Choose models based on your system capabilities:
-
-| Model Type | Model Name | Size | RAM Required | Use Case |
-|------------|------------|------|--------------|----------|
-| **Embedding** | `nomic-embed-text` | ~274MB | 1GB | **Recommended** - General purpose |
-| **Embedding** | `all-minilm` | ~23MB | 512MB | Lightweight alternative |
-| **Chat** | `qwen3:14b` | ~8.5GB | 16GB | **Recommended**  |
-| **Chat** | `llama3.1:8b` | ~4.7GB | 8GB | Balanced option |
-| **Chat** | `mistral:latest` | ~4.1GB | 8GB | Quick responses |
-| **Chat** | `phi3:mini` | ~2.3GB | 4GB | Low-resource systems |
-
-
-
-### Prerequisites (Required for Both Installation Methods)
-
-**1. Install Ollama** (for local AI models):
+**1. Install and start Ollama**:
 ```bash
 # macOS
 brew install ollama
@@ -58,103 +37,50 @@ brew install ollama
 # Or download from https://ollama.com
 ```
 
-**2. Start Ollama and install required models**:
+**2. Pull models** (recommendations: `nomic-embed-text` for embeddings, `olmo3:7b` or `olmo3:32b` for chat):
 ```bash
 ollama serve
-
-# Install embedding model (required)
-ollama pull nomic-embed-text
-
-# Install a chat model (see recommendations above)
-ollama pull qwen3:14b
+ollama pull <embedding-model>
+ollama pull <chat-model>
 ```
 
-### Installation Options
+### Option 1: uv (Recommended)
 
-Choose your preferred installation method:
+Requires Python 3.12 and [uv](https://docs.astral.sh/uv/).
 
-### Option 1: Direct Installation with uv (Recommended)
-
-**Additional Prerequisites:**
-- Python 3.12
-- [uv](https://docs.astral.sh/uv/) - Fast Python package installer and resolver
-
-**Installation Steps:**
-
-1. **Install uv** (if not already installed):
-   ```bash
-   # macOS/Linux
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   
-   # Or with Homebrew
-   brew install uv
-   
-   # Or with pip
-   pip install uv
-   ```
-
-2. **Clone the repository**:
-   ```bash
-   git clone https://github.com/clstaudt/ragadoc.git
-   cd ragadoc
-   ```
-
-3. **Install dependencies and create virtual environment**:
-   ```bash
-   uv sync
-   ```
-
-4. **Launch the application**:
-   ```bash
-   uv run streamlit run app.py
-   ```
-
-5. **Open your browser** to `http://localhost:8501`
-
-#### Development Setup
-
-For development with test dependencies:
 ```bash
-uv sync --dev
+git clone https://github.com/clstaudt/ragadoc.git
+cd ragadoc
+uv sync
+uv run streamlit run app.py
 ```
 
-Run tests:
+Open `http://localhost:8501`
+
+### Option 2: Docker
+
 ```bash
-uv run pytest
+git clone https://github.com/clstaudt/ragadoc.git
+cd ragadoc
+docker-compose up --build
 ```
 
-### Option 2: Docker Installation
+Open `http://localhost:8501`
 
-**Additional Prerequisites:**
-- Docker and Docker Compose
+## ⚙️ Configuration
 
-**Installation Steps:**
+Copy `env.example` to `.env` to configure Ollama instances (local or remote).
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/clstaudt/ragadoc.git
-   cd ragadoc
-   ```
+## 📖 Usage
 
-2. **Start with Docker Compose**:
-   ```bash
-   docker-compose up --build
-   ```
+1. **Select Models** - Choose chat and embedding models in the sidebar
+2. **Upload a PDF** - Drag and drop your document (extraction and indexing happens automatically)
+3. **Chat** - Ask questions in natural language
+4. **View Citations** - Answers include citations with highlighted PDF passages shown below
 
-3. **Open your browser** to `http://localhost:8501`
-
-## 📖 How to Use
-
-1. **Upload a PDF** - Drag and drop or browse for your document
-2. **Select AI Model** - Choose from your locally installed Ollama models
-3. **Start Chatting** - Ask questions about your document in natural language
-4. **View Citations** - See highlighted text in the PDF that supports each answer
-5. **Explore** - Continue the conversation to dive deeper into your document
-
+**Expert Mode** (optional): Toggle in sidebar to adjust RAG parameters like chunk size, similarity threshold, and retrieval count.
 
 ## 🏗️ Architecture
-
-Ragadoc uses a modern RAG (Retrieval-Augmented Generation) architecture:
 
 ```
 PDF Upload → Text Extraction → Chunking → Vector Embeddings
@@ -164,46 +90,22 @@ User Question → Semantic Search → Context Retrieval → AI Response
                                     Citation Highlighting
 ```
 
-**Tech Stack:**
-- **Frontend**: Streamlit web interface
-- **AI Models**: Ollama (local LLMs)
-- **Vector DB**: ChromaDB for semantic search
-- **PDF Processing**: PyMuPDF4LLM for structure-aware extraction
-- **Embeddings**: nomic-embed-text model
-- **Package Management**: uv
-
-
+**Tech Stack:** Streamlit • Ollama • ChromaDB • PyMuPDF4LLM • uv
 
 ## 🐛 Troubleshooting
 
-### Common Issues
-
 **Ollama Connection Error**
 ```bash
-# Verify Ollama is running
 curl http://localhost:11434/api/version
-
-# If using Docker, ensure external access
-OLLAMA_HOST=0.0.0.0:11434 ollama serve
+# For Docker: OLLAMA_HOST=0.0.0.0:11434 ollama serve
 ```
 
-**Slow Performance**
-- Try next smaller model
-- Reduce chunk size in expert RAG settings
-- Ensure sufficient RAM is available
+**Slow Performance** - Try a smaller model or reduce chunk size in RAG settings.
 
 ## 📄 License
 
-This project is licensed under the GPL License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [Ollama](https://ollama.com) for making local AI accessible
-- [Streamlit](https://streamlit.io) for the amazing web framework
-- [PyMuPDF](https://pymupdf.readthedocs.io/) for PDF processing
-- [ChromaDB](https://www.trychroma.com/) for vector storage
-- [uv](https://docs.astral.sh/uv/) for fast Python package management
+GPL License - see [LICENSE](LICENSE).
 
 ---
 
-**⭐ Star this repo if Ragadoc helps you work with your documents more effectively!**
+**⭐ Star this repo if Ragadoc helps you work with your documents!**
