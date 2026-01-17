@@ -37,6 +37,35 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
+# TEMPORARY WORKAROUND: Monkey-patch ollama.Client.show to handle server/library version mismatch
+# The ollama Python package (0.6.x) expects model_info field but some models don't provide it
+# TODO: Remove this patch once ollama package is updated to handle missing model_info gracefully
+import ollama
+
+class _ShowResponseFallback:
+    """Minimal fallback that provides the .modelinfo attribute llama-index needs"""
+    def __init__(self, data: dict):
+        self._data = data
+        self.modelinfo = data.get('model_info', data.get('details', {}))
+    
+    def __getattr__(self, name):
+        return self._data.get(name)
+
+_original_client_show = ollama.Client.show
+
+def _patched_client_show(self, model: str, *args, **kwargs):
+    """Patched Client.show that falls back to raw HTTP on validation errors"""
+    try:
+        return _original_client_show(self, model, *args, **kwargs)
+    except Exception as e:
+        if "validation error" in str(e).lower():
+            # Use the client's existing _client to make the request
+            response = self._client.post("/api/show", json={"name": model})
+            return _ShowResponseFallback(response.json())
+        raise
+
+ollama.Client.show = _patched_client_show
+
 # Local imports
 from .config import (
     DEFAULT_CHUNK_SIZE, 

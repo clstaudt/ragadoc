@@ -72,7 +72,30 @@ class ModelManager:
             
             return model_info
         except Exception as e:
+            # Handle Pydantic validation errors from ollama library version mismatch
+            # The ollama Python package may not be up to date with the server API
+            if "validation error" in str(e).lower() and "model_info" in str(e):
+                logger.warning(f"Ollama library/server version mismatch for {model_name}. "
+                             "Consider updating the ollama Python package or use raw HTTP.")
+                # Fall back to raw HTTP request to get model info
+                return self._get_model_info_raw(model_name)
             logger.warning(f"Could not get model info for {model_name}: {e}")
+            return None
+    
+    def _get_model_info_raw(self, model_name: str) -> Optional[Dict[str, Any]]:
+        """Get model info via raw HTTP request (fallback for version mismatches)"""
+        try:
+            import httpx
+            response = httpx.post(
+                f"{self.ollama_base_url}/api/show",
+                json={"name": model_name},
+                timeout=30.0
+            )
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logger.warning(f"Raw HTTP model info request failed for {model_name}: {e}")
             return None
     
     def get_context_length(self, model_name: str) -> Optional[int]:
