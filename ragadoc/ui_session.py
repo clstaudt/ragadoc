@@ -12,15 +12,25 @@ from .model_manager import ModelManager
 from .chat_manager import ChatManager
 from .llm_interface import LLMInterface
 from .rag_system import create_rag_system
-from .ui_config import get_ollama_base_url, is_running_in_docker
+from .ui_config import get_ollama_instances, is_running_in_docker
 from .config import DEFAULT_RAG_CONFIG
 
 
 def init_session_state():
     """Initialize Streamlit session state with backend managers"""
     
+    # Initialize Ollama instances
+    if "ollama_instances" not in st.session_state:
+        st.session_state.ollama_instances = get_ollama_instances()
+    if "selected_ollama_instance" not in st.session_state:
+        st.session_state.selected_ollama_instance = st.session_state.ollama_instances[0]["name"]
+    
     # Get environment configuration
-    ollama_base_url = get_ollama_base_url()
+    ollama_base_url = next(
+        (i["url"] for i in st.session_state.ollama_instances 
+         if i["name"] == st.session_state.selected_ollama_instance),
+        st.session_state.ollama_instances[0]["url"]
+    )
     in_docker = is_running_in_docker()
     
     # Initialize backend managers
@@ -54,10 +64,19 @@ def init_session_state():
         init_rag_system()
 
 
+def get_current_ollama_url() -> str:
+    """Get the URL for the currently selected Ollama instance"""
+    return next(
+        (i["url"] for i in st.session_state.ollama_instances 
+         if i["name"] == st.session_state.selected_ollama_instance),
+        st.session_state.ollama_instances[0]["url"]
+    )
+
+
 def init_rag_system():
     """Initialize the RAG system"""
     try:
-        ollama_base_url = get_ollama_base_url()
+        ollama_base_url = get_current_ollama_url()
         
         # Get available models for embedding model check
         available_models = st.session_state.model_manager.get_available_models()
@@ -92,4 +111,29 @@ def init_rag_system():
         logger.info("RAG system initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize RAG system: {e}")
-        st.session_state.rag_system = None 
+        st.session_state.rag_system = None
+
+
+def switch_ollama_instance(instance_name: str):
+    """Switch to a different Ollama instance"""
+    logger.info(f"switch_ollama_instance called with: {instance_name}")
+    logger.info(f"Available instances: {st.session_state.ollama_instances}")
+    
+    url = next((i["url"] for i in st.session_state.ollama_instances if i["name"] == instance_name), None)
+    if not url:
+        logger.error(f"No URL found for instance: {instance_name}")
+        return
+    
+    logger.info(f"Setting model_manager URL to: {url}")
+    st.session_state.selected_ollama_instance = instance_name
+    in_docker = is_running_in_docker()
+    
+    st.session_state.model_manager = ModelManager(url, in_docker)
+    st.session_state.llm_interface = LLMInterface(url, in_docker)
+    st.session_state.selected_model = None
+    
+    if "rag_system" in st.session_state:
+        del st.session_state["rag_system"]
+    init_rag_system()
+    
+    logger.info(f"Switched to Ollama instance: {instance_name} ({url})") 

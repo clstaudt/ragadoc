@@ -42,6 +42,8 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     # High-quality PDF to Markdown conversion
     "pymupdf4llm>=0.0.5",
+    # Environment configuration
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
