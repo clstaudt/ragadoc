@@ -58,16 +58,24 @@ def generate_response_with_ui(prompt, current_chat):
         
         logger.info("Using RAG system for response generation")
         
-        # Get retrieved chunks for RAG
+        # Get retrieved chunks for RAG with current expert settings
         try:
-            retrieval_info = st.session_state.rag_system.get_retrieval_info(prompt)
+            # Read current expert parameters from session state for dynamic adjustment
+            current_threshold = st.session_state.rag_config.get("similarity_threshold", 0.7)
+            current_top_k = st.session_state.rag_config.get("top_k", 10)
+            
+            retrieval_info = st.session_state.rag_system.get_retrieval_info(
+                prompt,
+                similarity_threshold=current_threshold,
+                top_k=current_top_k
+            )
             
             # Get all retrieved chunks (before filtering) for fallback
             try:
                 from llama_index.core.retrievers import VectorIndexRetriever
                 retriever = VectorIndexRetriever(
                     index=st.session_state.rag_system.index,
-                    similarity_top_k=st.session_state.rag_system.top_k
+                    similarity_top_k=current_top_k
                 )
                 all_nodes = retriever.retrieve(prompt)
             except Exception as e:

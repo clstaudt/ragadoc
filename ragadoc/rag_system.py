@@ -402,12 +402,19 @@ class RAGSystem:
             logger.error(f"Failed to query document: {e}")
             raise
     
-    def get_retrieval_info(self, question: str) -> List[Dict[str, Any]]:
+    def get_retrieval_info(
+        self, 
+        question: str,
+        similarity_threshold: Optional[float] = None,
+        top_k: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """
         Get detailed information about retrieved chunks without generating response
         
         Args:
             question: User's question
+            similarity_threshold: Override similarity threshold (uses instance default if None)
+            top_k: Override max chunks to retrieve (uses instance default if None)
             
         Returns:
             List of retrieved chunk information
@@ -415,22 +422,22 @@ class RAGSystem:
         if not self.index:
             raise ValueError("No index available. Process a document first.")
         
+        # Use provided parameters or fall back to instance defaults
+        effective_threshold = similarity_threshold if similarity_threshold is not None else self.similarity_threshold
+        effective_top_k = top_k if top_k is not None else self.top_k
+        
         try:
-            logger.info(f"=== RETRIEVAL DEBUG START ===")
-            logger.info(f"Question: {question}")
+            logger.debug(f"Retrieval query: {question[:50]}...")
+            logger.debug(f"Using threshold={effective_threshold}, top_k={effective_top_k}")
             
-            # Test query embedding generation
-            logger.info("Generating query embedding...")
+            # Generate query embedding
             query_embedding = self.embed_model.get_text_embedding(question)
-            logger.info(f"Query embedding dimension: {len(query_embedding)}")
-            logger.info(f"Query embedding sample: {query_embedding[:3]}")
             
             # Get total number of chunks in the vector store
             total_chunks = 0
             if hasattr(self.index.vector_store, '_collection'):
                 collection = self.index.vector_store._collection
                 total_chunks = collection.count()
-                logger.info(f"Vector store contains {total_chunks} embeddings")
             
             # Strategy: Retrieve a larger set first, then filter by similarity
             # Use a reasonable upper bound to avoid memory issues
@@ -441,56 +448,28 @@ class RAGSystem:
                 index=self.index,
                 similarity_top_k=retrieval_limit
             )
-            logger.info(f"Created retriever with retrieval_limit={retrieval_limit} (total_chunks={total_chunks})")
-            
-            # Test direct ChromaDB query for comparison
-            if hasattr(self.index.vector_store, '_collection'):
-                collection = self.index.vector_store._collection
-                logger.info("Testing direct ChromaDB query...")
-                try:
-                    chroma_results = collection.query(
-                        query_embeddings=[query_embedding],
-                        n_results=min(retrieval_limit, total_chunks)
-                    )
-                    logger.info(f"Direct ChromaDB query returned {len(chroma_results['ids'][0])} results")
-                    if chroma_results['distances'][0]:
-                        logger.info(f"Direct ChromaDB distances: {chroma_results['distances'][0][:5]}...")  # Show first 5
-                        # Convert distances to similarities (ChromaDB uses cosine distance)
-                        similarities = [1 - dist for dist in chroma_results['distances'][0]]
-                        above_threshold = [s for s in similarities if s >= self.similarity_threshold]
-                        logger.info(f"Chunks above threshold ({self.similarity_threshold}): {len(above_threshold)}")
-                except Exception as e:
-                    logger.error(f"Direct ChromaDB query failed: {e}")
             
             # Retrieve nodes with larger limit
-            logger.info("Retrieving nodes via LlamaIndex...")
             nodes = retriever.retrieve(question)
-            logger.info(f"Retrieved {len(nodes)} nodes before filtering")
+            logger.debug(f"Retrieved {len(nodes)} nodes before filtering")
             
             # Filter by similarity threshold FIRST (this is the key change)
             filtered_nodes = [
                 node for node in nodes 
-                if getattr(node, 'score', 0.0) >= self.similarity_threshold
+                if getattr(node, 'score', 0.0) >= effective_threshold
             ]
             
-            logger.info(f"After similarity filtering: {len(filtered_nodes)} nodes remain")
+            logger.debug(f"After similarity filtering (>={effective_threshold}): {len(filtered_nodes)} nodes remain")
             
             # Now apply top_k limit to the already-filtered high-quality chunks
             # This ensures we don't lose relevant chunks due to arbitrary limits
-            if len(filtered_nodes) > self.top_k:
-                logger.info(f"Limiting to top {self.top_k} chunks from {len(filtered_nodes)} high-similarity chunks")
-                final_nodes = filtered_nodes[:self.top_k]
+            if len(filtered_nodes) > effective_top_k:
+                logger.debug(f"Limiting to top {effective_top_k} chunks from {len(filtered_nodes)} high-similarity chunks")
+                final_nodes = filtered_nodes[:effective_top_k]
             else:
                 final_nodes = filtered_nodes
             
-            # Log all scores for debugging
-            for i, node in enumerate(final_nodes):
-                score = getattr(node, 'score', 0.0)
-                logger.info(f"Final node {i+1} score: {score:.6f}")
-                logger.info(f"Final node {i+1} text preview: {node.text[:100]}...")
-            
-            logger.info(f"Final result: {len(final_nodes)} chunks")
-            logger.info(f"=== RETRIEVAL DEBUG END ===")
+            logger.debug(f"Final result: {len(final_nodes)} chunks")
             
             # Prepare chunk information
             chunks_info = []

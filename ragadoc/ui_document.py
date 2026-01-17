@@ -51,9 +51,34 @@ def render_document_upload():
                 if success:
                     st.success(f"Document '{uploaded_file.name}' processed successfully!")
                     
-                    # Process with RAG system - now required
-                    if st.session_state.rag_system and getattr(st.session_state.rag_system, 'index', None) is not None:
-                        # RAG system is ready, process document
+                    # Check if RAG system needs re-initialization due to changed indexing settings
+                    needs_reinit = False
+                    if st.session_state.rag_system:
+                        current_config = st.session_state.rag_config
+                        rag_sys = st.session_state.rag_system
+                        
+                        # Check chunk settings
+                        chunk_size_changed = rag_sys.chunk_size != current_config.get("chunk_size")
+                        chunk_overlap_changed = rag_sys.chunk_overlap != current_config.get("chunk_overlap")
+                        
+                        # Check embedding model (account for :latest suffix)
+                        config_embed = current_config.get("embedding_model", "")
+                        embedding_changed = (rag_sys.embedding_model != config_embed and 
+                                            rag_sys.embedding_model != f"{config_embed}:latest")
+                        
+                        if chunk_size_changed or chunk_overlap_changed or embedding_changed:
+                            needs_reinit = True
+                            logger.info(f"RAG system needs reinit: chunk_size {rag_sys.chunk_size} vs {current_config.get('chunk_size')}, "
+                                       f"chunk_overlap {rag_sys.chunk_overlap} vs {current_config.get('chunk_overlap')}")
+                    
+                    # Reinitialize RAG system if settings changed or no system exists
+                    if needs_reinit or not st.session_state.rag_system:
+                        with st.spinner("Applying RAG settings..."):
+                            init_rag_system()
+                            logger.info("RAG system reinitialized with current settings")
+                    
+                    # Process with RAG system
+                    if st.session_state.rag_system:
                         try:
                             with st.spinner("Processing document with RAG system..."):
                                 document_id = str(uuid.uuid4()).replace('-', '')[:16]
@@ -72,32 +97,6 @@ def render_document_upload():
                                 
                         except Exception as e:
                             logger.error(f"RAG processing failed: {e}")
-                            st.error(f"❌ **RAG processing failed**: {str(e)}")
-                            st.error("⚠️ Please try again or check your RAG system configuration.")
-                            return
-                    elif st.session_state.rag_system:
-                        # RAG system exists but no index - reinitialize and try again
-                        try:
-                            with st.spinner("Reinitializing RAG system and processing document..."):
-                                # Reinitialize RAG system
-                                init_rag_system()
-                                
-                                document_id = str(uuid.uuid4()).replace('-', '')[:16]
-                                
-                                rag_stats = st.session_state.rag_system.process_document(
-                                    extracted_text, document_id
-                                )
-                                
-                                # Update chat with RAG processing info
-                                st.session_state.chat_manager.update_rag_processing(
-                                    rag_stats, current_chat.id  # Explicitly specify the chat ID
-                                )
-                                
-                                st.success("✅ Document processed with RAG system!")
-                                st.info(f"Created {rag_stats['total_chunks']} chunks for semantic search")
-                                
-                        except Exception as e:
-                            logger.error(f"RAG processing failed after reinit: {e}")
                             st.error(f"❌ **RAG processing failed**: {str(e)}")
                             st.error("⚠️ Please try again or check your RAG system configuration.")
                             return
