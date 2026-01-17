@@ -1,6 +1,6 @@
 [project]
 name = "ragadoc"
-version = "0.1.0"
+version = "0.2.0"
 description = "An AI document assistant that answers questions about your PDFs with citations and highlights them directly in the document."
 readme = "README.md"
 license = { text = "GPL-3.0" }
