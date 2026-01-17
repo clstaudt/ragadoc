@@ -18,6 +18,39 @@ from .config import (
 )
 
 
+def _render_rag_status():
+    """Render minimal RAG system status at the bottom of the sidebar"""
+    if st.session_state.rag_system:
+        # RAG system ready indicator
+        st.caption("✅ RAG System Ready")
+        
+        # Document count with clear option
+        available_docs = st.session_state.rag_system.get_available_documents()
+        if available_docs:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.caption(f"📊 {len(available_docs)} document(s) in system")
+            with col2:
+                if st.button("🗑️", key="clear_all_docs", help="Clear all stored documents"):
+                    st.session_state.rag_system.clear_all_documents()
+                    st.session_state.chat_manager.clear_all_chats()
+                    st.rerun()
+        
+        # Current document chunks for this chat
+        current_chat = st.session_state.chat_manager.get_current_chat()
+        if current_chat and current_chat.rag_processed:
+            stats = current_chat.rag_stats or {}
+            st.caption(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
+    else:
+        # RAG system not available - show retry option
+        st.caption("❌ RAG System Not Available")
+        if st.button("🔄 Retry", key="retry_rag_init", help="Retry RAG initialization"):
+            if "rag_system" in st.session_state:
+                del st.session_state["rag_system"]
+            init_rag_system()
+            st.rerun()
+
+
 def render_sidebar():
     """Render the sidebar with chat history and RAG configuration"""
     with st.sidebar:
@@ -85,50 +118,61 @@ def render_sidebar():
         # RAG Configuration (only shown in expert mode)
         if expert_mode:
             with st.expander("🔍 RAG Settings", expanded=False):
-                # RAG parameters (excluding embedding model which is now global)
-                chunk_size = st.slider("Chunk Size (tokens)", CHUNK_SIZE_RANGE[0], CHUNK_SIZE_RANGE[1], st.session_state.rag_config["chunk_size"], CHUNK_SIZE_STEP)
-                chunk_overlap = st.slider("Chunk Overlap (tokens)", CHUNK_OVERLAP_RANGE[0], CHUNK_OVERLAP_RANGE[1], st.session_state.rag_config["chunk_overlap"], CHUNK_OVERLAP_STEP)
-                similarity_threshold = st.slider("Similarity Threshold", SIMILARITY_THRESHOLD_RANGE[0], SIMILARITY_THRESHOLD_RANGE[1], st.session_state.rag_config["similarity_threshold"], SIMILARITY_THRESHOLD_STEP)
-                top_k = st.slider("Max Retrieved Chunks", TOP_K_RANGE[0], TOP_K_RANGE[1], st.session_state.rag_config["top_k"], TOP_K_STEP)
+                # === Query-time parameters (apply immediately) ===
+                st.caption("**Query Settings** — apply immediately")
+                similarity_threshold = st.slider(
+                    "Similarity Threshold", 
+                    SIMILARITY_THRESHOLD_RANGE[0], SIMILARITY_THRESHOLD_RANGE[1], 
+                    st.session_state.rag_config["similarity_threshold"], 
+                    SIMILARITY_THRESHOLD_STEP,
+                    help="Minimum similarity score for retrieved chunks"
+                )
+                top_k = st.slider(
+                    "Max Retrieved Chunks", 
+                    TOP_K_RANGE[0], TOP_K_RANGE[1], 
+                    st.session_state.rag_config["top_k"], 
+                    TOP_K_STEP,
+                    help="Maximum number of chunks to retrieve per query"
+                )
                 
-                # Update configuration if changed (excluding embedding model)
+                st.divider()
+                
+                # === Document-time parameters (require re-indexing) ===
+                st.caption("**Indexing Settings** — require document re-upload")
+                chunk_size = st.slider(
+                    "Chunk Size (tokens)", 
+                    CHUNK_SIZE_RANGE[0], CHUNK_SIZE_RANGE[1], 
+                    st.session_state.rag_config["chunk_size"], 
+                    CHUNK_SIZE_STEP,
+                    help="Size of text chunks when indexing documents"
+                )
+                chunk_overlap = st.slider(
+                    "Chunk Overlap (tokens)", 
+                    CHUNK_OVERLAP_RANGE[0], CHUNK_OVERLAP_RANGE[1], 
+                    st.session_state.rag_config["chunk_overlap"], 
+                    CHUNK_OVERLAP_STEP,
+                    help="Overlap between consecutive chunks"
+                )
+                
+                # Update configuration
                 new_config = {
                     "chunk_size": chunk_size,
                     "chunk_overlap": chunk_overlap, 
                     "similarity_threshold": similarity_threshold,
                     "top_k": top_k,
-                    "embedding_model": st.session_state.rag_config["embedding_model"]  # Keep current embedding model
+                    "embedding_model": st.session_state.rag_config["embedding_model"]
                 }
+                
+                # Check if indexing settings changed (requires re-indexing)
+                indexing_changed = (
+                    new_config["chunk_size"] != st.session_state.rag_config["chunk_size"] or
+                    new_config["chunk_overlap"] != st.session_state.rag_config["chunk_overlap"]
+                )
                 
                 if new_config != st.session_state.rag_config:
                     st.session_state.rag_config = new_config
-                    st.info("⚠️ RAG settings changed. Upload a new document to apply changes.")
-                
-                # RAG system status
-                if st.session_state.rag_system:
-                    st.success("✅ RAG System Ready")
-                    
-                    # Show available documents
-                    available_docs = st.session_state.rag_system.get_available_documents()
-                    if available_docs:
-                        st.info(f"📊 {len(available_docs)} document(s) in system")
-                        
-                        # Show current document for current chat
-                        current_chat = st.session_state.chat_manager.get_current_chat()
-                        if current_chat and current_chat.rag_processed:
-                            stats = current_chat.rag_stats or {}
-                            st.info(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
-                        else:
-                            st.warning("📄 No document in current chat")
-                    else:
-                        st.warning("📄 No documents processed yet")
-                else:
-                    st.error("❌ RAG System Not Available")
-                    if st.button("🔄 Retry RAG Initialization"):
-                        if "rag_system" in st.session_state:
-                            del st.session_state["rag_system"]
-                        init_rag_system()
-                        st.rerun()
+                    if indexing_changed:
+                        st.warning("↑ Re-upload document to apply indexing changes")
         
         st.divider()
         
@@ -212,4 +256,8 @@ def render_sidebar():
                             st.session_state.chat_manager.delete_chat(chat_id)
                             st.rerun()
         else:
-            st.write("*No chat history yet*") 
+            st.write("*No chat history yet*")
+        
+        # Minimal RAG status at the bottom of sidebar
+        st.divider()
+        _render_rag_status() 
