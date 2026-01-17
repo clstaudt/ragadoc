@@ -145,20 +145,12 @@ class LLMInterface:
         ]
         
         try:
-            # Determine Ollama client based on environment
-            if self.use_docker:
-                client = ollama.Client(host=self.ollama_base_url)
-                chat_stream = client.chat(
-                    model=model_name,
-                    messages=messages,
-                    stream=True
-                )
-            else:
-                chat_stream = ollama.chat(
-                    model=model_name,
-                    messages=messages,
-                    stream=True
-                )
+            client = ollama.Client(host=self.ollama_base_url)
+            chat_stream = client.chat(
+                model=model_name,
+                messages=messages,
+                stream=True
+            )
             
             # Stream response
             for chunk in chat_stream:
@@ -216,20 +208,12 @@ class LLMInterface:
         ]
         
         try:
-            # Determine Ollama client based on environment
-            if self.use_docker:
-                client = ollama.Client(host=self.ollama_base_url)
-                response = client.chat(
-                    model=model_name,
-                    messages=messages,
-                    stream=False
-                )
-            else:
-                response = ollama.chat(
-                    model=model_name,
-                    messages=messages,
-                    stream=False
-                )
+            client = ollama.Client(host=self.ollama_base_url)
+            response = client.chat(
+                model=model_name,
+                messages=messages,
+                stream=False
+            )
             
             return response['message']['content']
             

@@ -8,6 +8,10 @@ import base64
 import os
 import streamlit as st
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from project root
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 
 def is_running_in_docker():
@@ -18,13 +22,26 @@ def is_running_in_docker():
     )
 
 
+def get_ollama_instances() -> list[dict]:
+    """Parse OLLAMA_INSTANCES env var. Format: name1:url1,name2:url2,..."""
+    instances_str = os.environ.get('OLLAMA_INSTANCES', '').strip()
+    instances = []
+    
+    for entry in instances_str.split(','):
+        entry = entry.strip()
+        for proto in ['http://', 'https://']:
+            if proto in entry:
+                idx = entry.find(proto)
+                if idx > 0 and entry[idx-1] == ':':
+                    instances.append({"name": entry[:idx-1].strip(), "url": entry[idx:].strip()})
+                break
+    
+    return instances or [{"name": "Local", "url": "http://localhost:11434"}]
+
+
 def get_ollama_base_url():
-    """Get the appropriate Ollama base URL based on environment"""
-    in_docker = is_running_in_docker()
-    if in_docker:
-        return os.environ.get('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
-    else:
-        return "http://localhost:11434"
+    """Get the default Ollama base URL"""
+    return get_ollama_instances()[0]["url"]
 
 
 def load_darkstreaming_theme():

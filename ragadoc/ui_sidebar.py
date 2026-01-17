@@ -9,7 +9,7 @@ import streamlit as st
 from loguru import logger
 
 from .ui_config import is_running_in_docker, get_ollama_base_url
-from .ui_session import init_rag_system
+from .ui_session import init_rag_system, switch_ollama_instance
 from .config import (
     CHUNK_SIZE_RANGE, CHUNK_SIZE_STEP,
     CHUNK_OVERLAP_RANGE, CHUNK_OVERLAP_STEP,
@@ -23,18 +23,43 @@ def render_sidebar():
     with st.sidebar:
         st.header("Settings")
         
+        # Ollama Instance Selection (only if multiple instances)
+        instances = st.session_state.ollama_instances
+        if len(instances) > 1:
+            names = [i["name"] for i in instances]
+            current = st.session_state.selected_ollama_instance
+            idx = names.index(current) if current in names else 0
+            
+            selected = st.selectbox("🌐 Ollama Instance:", names, index=idx, key="ollama_instance_selector")
+            if selected != current:
+                logger.info(f"Instance changed: {current} -> {selected}")
+                switch_ollama_instance(selected)
+                st.rerun()
+        
+        # Debug: show which URL we're using
+        current_url = st.session_state.model_manager.ollama_base_url
+        st.caption(f"📡 {current_url}")
+        
+        # Key includes instance name to force widget refresh when instance changes
+        instance_key = st.session_state.selected_ollama_instance
+        
         # Chat Model Selection
         try:
             available_models = st.session_state.model_manager.get_available_models()
-            if available_models:
+            # Filter: chat models exclude embedding models
+            chat_models = [m for m in available_models if not any(x in m.lower() for x in ['embed', 'minilm'])]
+            # Filter: embedding models only
+            embedding_models = [m for m in available_models if any(x in m.lower() for x in ['embed', 'minilm'])]
+            
+            if chat_models:
                 previous_model = st.session_state.selected_model
                 st.session_state.selected_model = st.selectbox(
                     "🤖 Chat Model:",
-                    available_models,
+                    chat_models,
                     index=0 if not st.session_state.selected_model else 
-                          (available_models.index(st.session_state.selected_model) 
-                           if st.session_state.selected_model in available_models else 0),
-                    key="global_model_selector",
+                          (chat_models.index(st.session_state.selected_model) 
+                           if st.session_state.selected_model in chat_models else 0),
+                    key=f"model_selector_{instance_key}",
                     help="This model will be used for all chats"
                 )
                 
@@ -46,21 +71,27 @@ def render_sidebar():
                         init_rag_system()
                     st.rerun()
             else:
-                st.error("❌ No Ollama models found")
-                st.caption("Please ensure Ollama is running")
+                st.error("❌ No chat models found")
+                st.caption("Please ensure Ollama has chat models installed")
                 return
         except Exception as e:
             st.error(f"❌ Error connecting to Ollama: {e}")
             return
         
-        # Embedding Model Selection
+        # Embedding Model Selection (already filtered above)
+        if not embedding_models:
+            embedding_models = ["nomic-embed-text"]  # fallback
+        
         previous_embedding_model = st.session_state.rag_config["embedding_model"]
+        current_embed_idx = 0
+        if previous_embedding_model in embedding_models:
+            current_embed_idx = embedding_models.index(previous_embedding_model)
+        
         embedding_model = st.selectbox(
             "🔍 Embedding Model:", 
-            ["nomic-embed-text", "mxbai-embed-large", "all-minilm"], 
-            index=0 if st.session_state.rag_config["embedding_model"] == "nomic-embed-text" else 
-                  (1 if st.session_state.rag_config["embedding_model"] == "mxbai-embed-large" else 2),
-            key="global_embedding_selector",
+            embedding_models,
+            index=current_embed_idx,
+            key=f"embedding_selector_{instance_key}",
             help="This model will be used for document embedding and semantic search"
         )
         

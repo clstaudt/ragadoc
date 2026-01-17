@@ -12,7 +12,7 @@ from streamlit_pdf_viewer import pdf_viewer
 
 from .enhanced_pdf_processor import EnhancedPDFProcessor
 from .llm_interface import PromptBuilder
-from .ui_config import is_running_in_docker, get_ollama_base_url
+from .ui_session import get_current_ollama_url
 
 
 def show_citations(response, chat, user_question=""):
@@ -140,24 +140,13 @@ def generate_response_with_ui(prompt, current_chat):
             {"role": "user", "content": prompt}
         ]
         
-        # Determine Ollama client based on environment
-        ollama_base_url = get_ollama_base_url()
-        in_docker = is_running_in_docker()
-        
-        # Create chat stream
-        if in_docker:
-            client = ollama.Client(host=ollama_base_url)
-            chat_stream = client.chat(
-                model=st.session_state.selected_model,
-                messages=messages,
-                stream=True
-            )
-        else:
-            chat_stream = ollama.chat(
-                model=st.session_state.selected_model,
-                messages=messages,
-                stream=True
-            )
+        # Create chat stream using selected Ollama instance
+        client = ollama.Client(host=get_current_ollama_url())
+        chat_stream = client.chat(
+            model=st.session_state.selected_model,
+            messages=messages,
+            stream=True
+        )
         
         # Show loading message and stop button aligned
         with loading_placeholder.container():

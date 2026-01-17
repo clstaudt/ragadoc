@@ -31,13 +31,8 @@ class ModelManager:
     def get_available_models(self) -> List[str]:
         """Get list of available Ollama models"""
         try:
-            if self.use_docker:
-                # Docker - use explicit client configuration
-                client = ollama.Client(host=self.ollama_base_url)
-                models_info = client.list()
-            else:
-                # Direct execution - use default ollama client
-                models_info = ollama.list()
+            client = ollama.Client(host=self.ollama_base_url)
+            models_info = client.list()
                 
             # Handle both dict and ListResponse object
             if hasattr(models_info, 'models'):
@@ -63,13 +58,8 @@ class ModelManager:
     def get_model_info(self, model_name: str) -> Optional[Dict[str, Any]]:
         """Get detailed model information including context length"""
         try:
-            if self.use_docker:
-                # Docker - use explicit client configuration
-                client = ollama.Client(host=self.ollama_base_url)
-                model_info = client.show(model_name)
-            else:
-                # Direct execution - use default ollama client
-                model_info = ollama.show(model_name)
+            client = ollama.Client(host=self.ollama_base_url)
+            model_info = client.show(model_name)
             
             return model_info
         except Exception as e:
