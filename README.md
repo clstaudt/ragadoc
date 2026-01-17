@@ -73,36 +73,55 @@ ollama pull qwen3:14b
 
 Choose your preferred installation method:
 
-### Option 1: Direct Installation
+### Option 1: Direct Installation with uv (Recommended)
 
 **Additional Prerequisites:**
-- Python 3.8+
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/) - Fast Python package installer and resolver
 
 **Installation Steps:**
 
-1. **Clone the repository**:
+1. **Install uv** (if not already installed):
    ```bash
-   git clone https://github.com/yourusername/ragadoc.git
+   # macOS/Linux
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   
+   # Or with Homebrew
+   brew install uv
+   
+   # Or with pip
+   pip install uv
+   ```
+
+2. **Clone the repository**:
+   ```bash
+   git clone https://github.com/clstaudt/ragadoc.git
    cd ragadoc
    ```
 
-2. **Install Python dependencies**:
+3. **Install dependencies and create virtual environment**:
    ```bash
-   pip install -r requirements.txt
-   ```
-   
-   Or with conda:
-   ```bash
-   conda env create -f environment.yml
-   conda activate ragadoc
+   uv sync
    ```
 
-3. **Launch the application**:
+4. **Launch the application**:
    ```bash
-   streamlit run app.py
+   uv run streamlit run app.py
    ```
 
-4. **Open your browser** to `http://localhost:8501`
+5. **Open your browser** to `http://localhost:8501`
+
+#### Development Setup
+
+For development with test dependencies:
+```bash
+uv sync --dev
+```
+
+Run tests:
+```bash
+uv run pytest
+```
 
 ### Option 2: Docker Installation
 
@@ -113,13 +132,13 @@ Choose your preferred installation method:
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/ragadoc.git
+   git clone https://github.com/clstaudt/ragadoc.git
    cd ragadoc
    ```
 
 2. **Start with Docker Compose**:
    ```bash
-   docker-compose up
+   docker-compose up --build
    ```
 
 3. **Open your browser** to `http://localhost:8501`
@@ -151,6 +170,7 @@ User Question → Semantic Search → Context Retrieval → AI Response
 - **Vector DB**: ChromaDB for semantic search
 - **PDF Processing**: PyMuPDF4LLM for structure-aware extraction
 - **Embeddings**: nomic-embed-text model
+- **Package Management**: uv
 
 
 
@@ -182,6 +202,7 @@ This project is licensed under the GPL License - see the [LICENSE](LICENSE) file
 - [Streamlit](https://streamlit.io) for the amazing web framework
 - [PyMuPDF](https://pymupdf.readthedocs.io/) for PDF processing
 - [ChromaDB](https://www.trychroma.com/) for vector storage
+- [uv](https://docs.astral.sh/uv/) for fast Python package management
 
 ---
 

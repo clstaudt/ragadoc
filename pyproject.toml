@@ -1,0 +1,91 @@
+[project]
+name = "ragadoc"
+version = "0.1.0"
+description = "An AI document assistant that answers questions about your PDFs with citations and highlights them directly in the document."
+readme = "README.md"
+license = { text = "GPL-3.0" }
+authors = [
+    { name = "Christian Staudt" }
+]
+keywords = ["ai", "pdf", "document-analysis", "rag", "question-answering", "streamlit", "ollama", "local-ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Office/Business :: Office Suites",
+]
+requires-python = "==3.12.*"
+
+dependencies = [
+    # Core dependencies
+    "streamlit>=1.30.0",
+    "ollama>=0.1.0",
+    "streamlit-pdf-viewer>=0.0.24",
+    "PyPDF2>=3.0.0",
+    "pdfplumber>=0.10.0",
+    "PyMuPDF>=1.23.0",
+    "pillow>=10.0.0",
+    "loguru>=0.7.0",
+    "tiktoken>=0.5.0",
+    # RAG system dependencies
+    "llama-index>=0.9.0",
+    "llama-index-embeddings-ollama>=0.1.0",
+    "llama-index-llms-ollama>=0.1.0",
+    "llama-index-vector-stores-chroma>=0.1.0",
+    "chromadb>=0.4.0",
+    "sentence-transformers>=2.2.0",
+    # High-quality PDF to Markdown conversion
+    "pymupdf4llm>=0.0.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+ragadoc = "app:main"
+
+[project.urls]
+Homepage = "https://github.com/clstaudt/ragadoc"
+Repository = "https://github.com/clstaudt/ragadoc"
+"Bug Reports" = "https://github.com/clstaudt/ragadoc/issues"
+Documentation = "https://github.com/clstaudt/ragadoc#readme"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ragadoc"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "ragadoc/**",
+    "app.py",
+    "README.md",
+    "LICENSE",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --disable-warnings"
+minversion = "7.0"
+markers = [
+    "integration: basic integration tests",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
