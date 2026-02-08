@@ -11,6 +11,11 @@ from .rag_system import (
     create_rag_system
 )
 
+try:
+    from .pageindex_rag import PageIndexRAGSystem
+except ImportError:
+    PageIndexRAGSystem = None  # pageindex package not installed
+
 from .model_manager import (
     ModelManager,
     ContextChecker
@@ -59,6 +64,7 @@ __all__ = [
     "EnhancedPDFProcessor",
     "RAGSystem",
     "create_rag_system",
+    "PageIndexRAGSystem",
     "ModelManager",
     "ContextChecker",
     "ChatManager",
