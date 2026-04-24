@@ -11,9 +11,15 @@ textColor = "#ffffff"  # White text matching darkstreaming theme
 gatherUsageStats = false
 
 [server]
-# Disable CORS protection for development
-enableCORS = false
+# Keep CORS enabled; disabling both CORS and XSRF causes Streamlit to silently
+# re-enable them, which breaks st.file_uploader with a 413 AxiosError.
+# See: https://github.com/streamlit/streamlit/issues/8983
+enableCORS = true
 enableXsrfProtection = false
+
+# Explicit upload/message limits (MB) to avoid 413s on the websocket path.
+maxUploadSize = 500
+maxMessageSize = 500
 
 # File watcher settings for better development experience
 fileWatcherType = "auto"
