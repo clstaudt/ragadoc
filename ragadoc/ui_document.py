@@ -4,6 +4,8 @@ Document Upload UI Components
 Handles the document upload interface including PDF processing and RAG integration.
 """
 
+import os
+import tempfile
 import streamlit as st
 import uuid
 from loguru import logger
@@ -50,60 +52,107 @@ def render_document_upload():
                 
                 if success:
                     st.success(f"Document '{uploaded_file.name}' processed successfully!")
+
+                    backend_type = st.session_state.get("rag_backend_type", "vector")
+
+                    # Record which backend was used for this chat
+                    current_chat.rag_backend = backend_type
                     
-                    # Check if RAG system needs re-initialization due to changed indexing settings
-                    needs_reinit = False
-                    if st.session_state.rag_system:
-                        current_config = st.session_state.rag_config
-                        rag_sys = st.session_state.rag_system
+                    if backend_type == "vector":
+                        # ── Vector RAG processing ─────────────────────
+                        # Check if RAG system needs re-initialization due to changed settings
+                        needs_reinit = False
+                        if st.session_state.rag_system:
+                            current_config = st.session_state.rag_config
+                            rag_sys = st.session_state.rag_system
+                            
+                            # Check chunk settings (only for vector backend)
+                            chunk_size_changed = getattr(rag_sys, 'chunk_size', None) != current_config.get("chunk_size")
+                            chunk_overlap_changed = getattr(rag_sys, 'chunk_overlap', None) != current_config.get("chunk_overlap")
+                            
+                            # Check embedding model (account for :latest suffix)
+                            config_embed = current_config.get("embedding_model", "")
+                            rag_embed = getattr(rag_sys, 'embedding_model', "")
+                            embedding_changed = (rag_embed != config_embed and 
+                                                rag_embed != f"{config_embed}:latest")
+                            
+                            if chunk_size_changed or chunk_overlap_changed or embedding_changed:
+                                needs_reinit = True
+                                logger.info(f"RAG system needs reinit due to changed settings")
                         
-                        # Check chunk settings
-                        chunk_size_changed = rag_sys.chunk_size != current_config.get("chunk_size")
-                        chunk_overlap_changed = rag_sys.chunk_overlap != current_config.get("chunk_overlap")
+                        # Reinitialize RAG system if settings changed or no system exists
+                        if needs_reinit or not st.session_state.rag_system:
+                            with st.spinner("Applying RAG settings..."):
+                                init_rag_system()
+                                logger.info("RAG system reinitialized with current settings")
                         
-                        # Check embedding model (account for :latest suffix)
-                        config_embed = current_config.get("embedding_model", "")
-                        embedding_changed = (rag_sys.embedding_model != config_embed and 
-                                            rag_sys.embedding_model != f"{config_embed}:latest")
-                        
-                        if chunk_size_changed or chunk_overlap_changed or embedding_changed:
-                            needs_reinit = True
-                            logger.info(f"RAG system needs reinit: chunk_size {rag_sys.chunk_size} vs {current_config.get('chunk_size')}, "
-                                       f"chunk_overlap {rag_sys.chunk_overlap} vs {current_config.get('chunk_overlap')}")
-                    
-                    # Reinitialize RAG system if settings changed or no system exists
-                    if needs_reinit or not st.session_state.rag_system:
-                        with st.spinner("Applying RAG settings..."):
-                            init_rag_system()
-                            logger.info("RAG system reinitialized with current settings")
-                    
-                    # Process with RAG system
-                    if st.session_state.rag_system:
-                        try:
-                            with st.spinner("Processing document with RAG system..."):
-                                document_id = str(uuid.uuid4()).replace('-', '')[:16]
-                                
-                                rag_stats = st.session_state.rag_system.process_document(
-                                    extracted_text, document_id
-                                )
-                                
-                                # Update chat with RAG processing info
-                                st.session_state.chat_manager.update_rag_processing(
-                                    rag_stats, current_chat.id  # Explicitly specify the chat ID
-                                )
-                                
-                                st.success("✅ Document processed with RAG system!")
-                                st.info(f"Created {rag_stats['total_chunks']} chunks for semantic search")
-                                
-                        except Exception as e:
-                            logger.error(f"RAG processing failed: {e}")
-                            st.error(f"❌ **RAG processing failed**: {str(e)}")
-                            st.error("⚠️ Please try again or check your RAG system configuration.")
+                        # Process with vector RAG system
+                        if st.session_state.rag_system:
+                            try:
+                                with st.spinner("Processing document with RAG system..."):
+                                    document_id = str(uuid.uuid4()).replace('-', '')[:16]
+                                    
+                                    rag_stats = st.session_state.rag_system.process_document(
+                                        extracted_text, document_id
+                                    )
+                                    
+                                    st.session_state.chat_manager.update_rag_processing(
+                                        rag_stats, current_chat.id
+                                    )
+                                    
+                                    st.success("✅ Document indexed with vector RAG!")
+                                    st.info(f"Created {rag_stats['total_chunks']} chunks for semantic search")
+                                    
+                            except Exception as e:
+                                logger.error(f"RAG processing failed: {e}")
+                                st.error(f"❌ **RAG processing failed**: {str(e)}")
+                                st.error("⚠️ Please try again or check your RAG system configuration.")
+                                return
+                        else:
+                            st.error("❌ **RAG system not available**")
+                            st.error("Please check the RAG Settings in the sidebar and retry initialization.")
                             return
-                    else:
-                        st.error("❌ **RAG system not available**")
-                        st.error("Please check the RAG Settings in the sidebar and retry initialization.")
-                        return
+
+                    elif backend_type == "pageindex":
+                        # ── PageIndex RAG processing ──────────────────
+                        if not st.session_state.rag_system:
+                            with st.spinner("Initializing PageIndex RAG system..."):
+                                init_rag_system()
+
+                        if st.session_state.rag_system:
+                            tmp_path = None
+                            try:
+                                # PageIndex needs the PDF file path
+                                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                                    tmp.write(pdf_bytes)
+                                    tmp_path = tmp.name
+
+                                with st.spinner("Building document tree with PageIndex (this may take several minutes)..."):
+                                    document_id = str(uuid.uuid4()).replace('-', '')[:16]
+                                    
+                                    rag_stats = st.session_state.rag_system.process_document(
+                                        extracted_text, document_id, pdf_path=tmp_path
+                                    )
+                                    
+                                    st.session_state.chat_manager.update_rag_processing(
+                                        rag_stats, current_chat.id
+                                    )
+                                    
+                                    st.success("✅ Document tree built with PageIndex!")
+                                    st.info(f"Generated tree with {rag_stats['total_nodes']} nodes for reasoning-based retrieval")
+
+                            except Exception as e:
+                                logger.error(f"PageIndex processing failed: {e}")
+                                st.error(f"❌ **PageIndex processing failed**: {str(e)}")
+                                st.error("⚠️ Please try again. Ensure your chat model supports structured JSON output.")
+                                return
+                            finally:
+                                if tmp_path and os.path.exists(tmp_path):
+                                    os.unlink(tmp_path)
+                        else:
+                            st.error("❌ **PageIndex RAG system not available**")
+                            st.error("Ensure the `pageindex` package is installed: `pip install pageindex`")
+                            return
                     
                     # Force a rerun to show chat interface
                     st.rerun()

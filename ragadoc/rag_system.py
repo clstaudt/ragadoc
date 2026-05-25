@@ -78,8 +78,12 @@ from .config import (
 
 class RAGSystem:
     """
-    Complete RAG system for document processing and querying
+    Complete RAG system for document processing and querying (vector-based backend)
     """
+
+    @property
+    def backend_type(self) -> str:
+        return "vector"
     
     def __init__(
         self, 

@@ -13,7 +13,7 @@ from .chat_manager import ChatManager
 from .llm_interface import LLMInterface
 from .rag_system import create_rag_system
 from .ui_config import get_ollama_instances, is_running_in_docker
-from .config import DEFAULT_RAG_CONFIG
+from .config import DEFAULT_RAG_CONFIG, DEFAULT_RAG_BACKEND
 
 
 def init_session_state():
@@ -55,6 +55,10 @@ def init_session_state():
     if "stop_generation" not in st.session_state:
         st.session_state.stop_generation = False
     
+    # RAG backend selection
+    if "rag_backend_type" not in st.session_state:
+        st.session_state.rag_backend_type = DEFAULT_RAG_BACKEND
+    
     # RAG configuration
     if "rag_config" not in st.session_state:
         st.session_state.rag_config = DEFAULT_RAG_CONFIG.copy()
@@ -74,7 +78,17 @@ def get_current_ollama_url() -> str:
 
 
 def init_rag_system():
-    """Initialize the RAG system"""
+    """Initialize the RAG system based on the selected backend type"""
+    backend_type = st.session_state.get("rag_backend_type", DEFAULT_RAG_BACKEND)
+
+    if backend_type == "pageindex":
+        _init_pageindex_rag_system()
+    else:
+        _init_vector_rag_system()
+
+
+def _init_vector_rag_system():
+    """Initialize the vector-based RAG system (ChromaDB + embeddings)"""
     try:
         ollama_base_url = get_current_ollama_url()
         
@@ -108,9 +122,43 @@ def init_rag_system():
             ollama_base_url=ollama_base_url,
             **rag_config
         )
-        logger.info("RAG system initialized successfully")
+        logger.info("Vector RAG system initialized successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize RAG system: {e}")
+        logger.error(f"Failed to initialize vector RAG system: {e}")
+        st.session_state.rag_system = None
+
+
+def _init_pageindex_rag_system():
+    """Initialize the PageIndex tree-based RAG system (fully local via Ollama)"""
+    try:
+        from .pageindex_rag import PageIndexRAGSystem
+
+        ollama_base_url = get_current_ollama_url()
+
+        # Determine which LLM model to use for tree generation and search
+        llm_model = st.session_state.selected_model
+        if not llm_model:
+            available_models = st.session_state.model_manager.get_available_models()
+            chat_models = [m for m in available_models
+                          if not any(embed in m.lower() for embed in ['embed', 'minilm'])]
+            if chat_models:
+                llm_model = chat_models[0]
+
+        if not llm_model:
+            logger.error("No chat model available for PageIndex RAG system")
+            st.session_state.rag_system = None
+            return
+
+        st.session_state.rag_system = PageIndexRAGSystem(
+            ollama_base_url=ollama_base_url,
+            llm_model=llm_model,
+        )
+        logger.info(f"PageIndex RAG system initialized with model: {llm_model}")
+    except ImportError:
+        logger.error("PageIndex package not installed. Install with: pip install pageindex")
+        st.session_state.rag_system = None
+    except Exception as e:
+        logger.error(f"Failed to initialize PageIndex RAG system: {e}")
         st.session_state.rag_system = None
 
 

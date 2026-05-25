@@ -11,6 +11,7 @@ from loguru import logger
 from .ui_config import is_running_in_docker, get_ollama_base_url
 from .ui_session import init_rag_system, switch_ollama_instance
 from .config import (
+    RAG_BACKENDS, DEFAULT_RAG_BACKEND,
     CHUNK_SIZE_RANGE, CHUNK_SIZE_STEP,
     CHUNK_OVERLAP_RANGE, CHUNK_OVERLAP_STEP,
     SIMILARITY_THRESHOLD_RANGE, SIMILARITY_THRESHOLD_STEP,
@@ -21,8 +22,9 @@ from .config import (
 def _render_rag_status():
     """Render minimal RAG system status at the bottom of the sidebar"""
     if st.session_state.rag_system:
-        # RAG system ready indicator
-        st.caption("✅ RAG System Ready")
+        backend_type = getattr(st.session_state.rag_system, 'backend_type', 'vector')
+        backend_label = RAG_BACKENDS.get(backend_type, backend_type)
+        st.caption(f"✅ {backend_label}")
         
         # Document count with clear option
         available_docs = st.session_state.rag_system.get_available_documents()
@@ -36,11 +38,14 @@ def _render_rag_status():
                     st.session_state.chat_manager.clear_all_chats()
                     st.rerun()
         
-        # Current document chunks for this chat
+        # Current document stats for this chat (backend-aware)
         current_chat = st.session_state.chat_manager.get_current_chat()
         if current_chat and current_chat.rag_processed:
             stats = current_chat.rag_stats or {}
-            st.caption(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
+            if backend_type == "pageindex":
+                st.caption(f"🌳 Current: {stats.get('total_nodes', 0)} tree nodes")
+            else:
+                st.caption(f"📄 Current: {stats.get('total_chunks', 0)} chunks")
     else:
         # RAG system not available - show retry option
         st.caption("❌ RAG System Not Available")
@@ -111,32 +116,63 @@ def render_sidebar():
             st.error(f"❌ Error connecting to Ollama: {e}")
             return
         
-        # Embedding Model Selection (already filtered above)
-        if not embedding_models:
-            embedding_models = ["nomic-embed-text"]  # fallback
-        
-        previous_embedding_model = st.session_state.rag_config["embedding_model"]
-        current_embed_idx = 0
-        if previous_embedding_model in embedding_models:
-            current_embed_idx = embedding_models.index(previous_embedding_model)
-        
-        embedding_model = st.selectbox(
-            "🔍 Embedding Model:", 
-            embedding_models,
-            index=current_embed_idx,
-            key=f"embedding_selector_{instance_key}",
-            help="This model will be used for document embedding and semantic search"
+        # ── RAG Backend Selection ──────────────────────────────────
+        # Disabled once a document is uploaded in the current chat
+        current_chat = st.session_state.chat_manager.get_current_chat()
+        has_document = current_chat and current_chat.document_text
+
+        backend_options = list(RAG_BACKENDS.keys())
+        current_backend = st.session_state.get("rag_backend_type", DEFAULT_RAG_BACKEND)
+        current_backend_idx = backend_options.index(current_backend) if current_backend in backend_options else 0
+
+        selected_backend = st.selectbox(
+            "📐 RAG Approach:",
+            backend_options,
+            index=current_backend_idx,
+            format_func=lambda x: RAG_BACKENDS[x],
+            disabled=bool(has_document),
+            key=f"backend_selector_{instance_key}",
+            help="Choose retrieval approach before uploading a document. "
+                 "Vector RAG uses embeddings + similarity search. "
+                 "PageIndex RAG uses tree-based reasoning (fully local)."
         )
-        
-        # Update embedding model if changed
-        if embedding_model != previous_embedding_model:
-            st.session_state.rag_config["embedding_model"] = embedding_model
-            logger.info(f"Embedding model changed from {previous_embedding_model} to {embedding_model}")
+
+        if selected_backend != st.session_state.rag_backend_type:
+            st.session_state.rag_backend_type = selected_backend
             if "rag_system" in st.session_state:
                 del st.session_state["rag_system"]
-                init_rag_system()
-            st.info("⚠️ Embedding model changed. Upload a new document to apply changes.")
+            init_rag_system()
             st.rerun()
+
+        is_pageindex = st.session_state.rag_backend_type == "pageindex"
+
+        # ── Vector RAG: Embedding Model Selection ─────────────────
+        if not is_pageindex:
+            if not embedding_models:
+                embedding_models = ["nomic-embed-text"]  # fallback
+            
+            previous_embedding_model = st.session_state.rag_config["embedding_model"]
+            current_embed_idx = 0
+            if previous_embedding_model in embedding_models:
+                current_embed_idx = embedding_models.index(previous_embedding_model)
+            
+            embedding_model = st.selectbox(
+                "🔍 Embedding Model:", 
+                embedding_models,
+                index=current_embed_idx,
+                key=f"embedding_selector_{instance_key}",
+                help="This model will be used for document embedding and semantic search"
+            )
+            
+            # Update embedding model if changed
+            if embedding_model != previous_embedding_model:
+                st.session_state.rag_config["embedding_model"] = embedding_model
+                logger.info(f"Embedding model changed from {previous_embedding_model} to {embedding_model}")
+                if "rag_system" in st.session_state:
+                    del st.session_state["rag_system"]
+                    init_rag_system()
+                st.info("⚠️ Embedding model changed. Upload a new document to apply changes.")
+                st.rerun()
         
         # Expert Mode Toggle
         expert_mode = st.toggle(
@@ -148,62 +184,72 @@ def render_sidebar():
         
         # RAG Configuration (only shown in expert mode)
         if expert_mode:
-            with st.expander("🔍 RAG Settings", expanded=False):
-                # === Query-time parameters (apply immediately) ===
-                st.caption("**Query Settings** — apply immediately")
-                similarity_threshold = st.slider(
-                    "Similarity Threshold", 
-                    SIMILARITY_THRESHOLD_RANGE[0], SIMILARITY_THRESHOLD_RANGE[1], 
-                    st.session_state.rag_config["similarity_threshold"], 
-                    SIMILARITY_THRESHOLD_STEP,
-                    help="Minimum similarity score for retrieved chunks"
-                )
-                top_k = st.slider(
-                    "Max Retrieved Chunks", 
-                    TOP_K_RANGE[0], TOP_K_RANGE[1], 
-                    st.session_state.rag_config["top_k"], 
-                    TOP_K_STEP,
-                    help="Maximum number of chunks to retrieve per query"
-                )
-                
-                st.divider()
-                
-                # === Document-time parameters (require re-indexing) ===
-                st.caption("**Indexing Settings** — require document re-upload")
-                chunk_size = st.slider(
-                    "Chunk Size (tokens)", 
-                    CHUNK_SIZE_RANGE[0], CHUNK_SIZE_RANGE[1], 
-                    st.session_state.rag_config["chunk_size"], 
-                    CHUNK_SIZE_STEP,
-                    help="Size of text chunks when indexing documents"
-                )
-                chunk_overlap = st.slider(
-                    "Chunk Overlap (tokens)", 
-                    CHUNK_OVERLAP_RANGE[0], CHUNK_OVERLAP_RANGE[1], 
-                    st.session_state.rag_config["chunk_overlap"], 
-                    CHUNK_OVERLAP_STEP,
-                    help="Overlap between consecutive chunks"
-                )
-                
-                # Update configuration
-                new_config = {
-                    "chunk_size": chunk_size,
-                    "chunk_overlap": chunk_overlap, 
-                    "similarity_threshold": similarity_threshold,
-                    "top_k": top_k,
-                    "embedding_model": st.session_state.rag_config["embedding_model"]
-                }
-                
-                # Check if indexing settings changed (requires re-indexing)
-                indexing_changed = (
-                    new_config["chunk_size"] != st.session_state.rag_config["chunk_size"] or
-                    new_config["chunk_overlap"] != st.session_state.rag_config["chunk_overlap"]
-                )
-                
-                if new_config != st.session_state.rag_config:
-                    st.session_state.rag_config = new_config
-                    if indexing_changed:
-                        st.warning("↑ Re-upload document to apply indexing changes")
+            if is_pageindex:
+                # ── PageIndex: no chunk/similarity settings ───────
+                with st.expander("🌳 PageIndex Settings", expanded=False):
+                    st.caption("PageIndex uses the selected chat model for tree "
+                               "generation and reasoning-based retrieval. No "
+                               "embeddings, chunks, or similarity thresholds.")
+                    st.caption("Tree generation may take several minutes for "
+                               "long documents, depending on model speed.")
+            else:
+                # ── Vector RAG: existing settings ─────────────────
+                with st.expander("🔍 RAG Settings", expanded=False):
+                    # === Query-time parameters (apply immediately) ===
+                    st.caption("**Query Settings** — apply immediately")
+                    similarity_threshold = st.slider(
+                        "Similarity Threshold", 
+                        SIMILARITY_THRESHOLD_RANGE[0], SIMILARITY_THRESHOLD_RANGE[1], 
+                        st.session_state.rag_config["similarity_threshold"], 
+                        SIMILARITY_THRESHOLD_STEP,
+                        help="Minimum similarity score for retrieved chunks"
+                    )
+                    top_k = st.slider(
+                        "Max Retrieved Chunks", 
+                        TOP_K_RANGE[0], TOP_K_RANGE[1], 
+                        st.session_state.rag_config["top_k"], 
+                        TOP_K_STEP,
+                        help="Maximum number of chunks to retrieve per query"
+                    )
+                    
+                    st.divider()
+                    
+                    # === Document-time parameters (require re-indexing) ===
+                    st.caption("**Indexing Settings** — require document re-upload")
+                    chunk_size = st.slider(
+                        "Chunk Size (tokens)", 
+                        CHUNK_SIZE_RANGE[0], CHUNK_SIZE_RANGE[1], 
+                        st.session_state.rag_config["chunk_size"], 
+                        CHUNK_SIZE_STEP,
+                        help="Size of text chunks when indexing documents"
+                    )
+                    chunk_overlap = st.slider(
+                        "Chunk Overlap (tokens)", 
+                        CHUNK_OVERLAP_RANGE[0], CHUNK_OVERLAP_RANGE[1], 
+                        st.session_state.rag_config["chunk_overlap"], 
+                        CHUNK_OVERLAP_STEP,
+                        help="Overlap between consecutive chunks"
+                    )
+                    
+                    # Update configuration
+                    new_config = {
+                        "chunk_size": chunk_size,
+                        "chunk_overlap": chunk_overlap, 
+                        "similarity_threshold": similarity_threshold,
+                        "top_k": top_k,
+                        "embedding_model": st.session_state.rag_config["embedding_model"]
+                    }
+                    
+                    # Check if indexing settings changed (requires re-indexing)
+                    indexing_changed = (
+                        new_config["chunk_size"] != st.session_state.rag_config["chunk_size"] or
+                        new_config["chunk_overlap"] != st.session_state.rag_config["chunk_overlap"]
+                    )
+                    
+                    if new_config != st.session_state.rag_config:
+                        st.session_state.rag_config = new_config
+                        if indexing_changed:
+                            st.warning("↑ Re-upload document to apply indexing changes")
         
         st.divider()
         

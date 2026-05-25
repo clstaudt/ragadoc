@@ -35,6 +35,7 @@ class ChatSession:
     document_id: Optional[str] = None  # RAG document ID
     rag_processed: bool = False
     rag_stats: Optional[Dict[str, Any]] = None
+    rag_backend: str = "vector"  # "vector" or "pageindex"
     
     def add_message(self, role: str, content: str) -> None:
         """Add a message to this chat session"""

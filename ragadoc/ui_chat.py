@@ -29,6 +29,96 @@ def show_citations(response, chat, user_question=""):
         st.warning(f"Could not show citations: {e}")
 
 
+def _retrieve_context_vector(prompt):
+    """Retrieve context using vector RAG (chunks + similarity)."""
+    current_threshold = st.session_state.rag_config.get("similarity_threshold", 0.7)
+    current_top_k = st.session_state.rag_config.get("top_k", 10)
+
+    retrieval_info = st.session_state.rag_system.get_retrieval_info(
+        prompt,
+        similarity_threshold=current_threshold,
+        top_k=current_top_k
+    )
+
+    # Get all retrieved chunks (before filtering) for fallback
+    all_nodes = []
+    try:
+        from llama_index.core.retrievers import VectorIndexRetriever
+        retriever = VectorIndexRetriever(
+            index=st.session_state.rag_system.index,
+            similarity_top_k=current_top_k
+        )
+        all_nodes = retriever.retrieve(prompt)
+    except Exception as e:
+        logger.warning(f"Could not get unfiltered chunks: {e}")
+
+    # Display retrieved chunks information IMMEDIATELY (before generation)
+    if retrieval_info:
+        with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
+            for chunk in retrieval_info:
+                st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
+                st.text_area(
+                    f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
+                    value=chunk['text'],
+                    height=200,
+                    disabled=True,
+                    key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
+                )
+                st.markdown("---")
+        return "\n\n".join([chunk['text'] for chunk in retrieval_info])
+    elif all_nodes:
+        st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
+        with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
+            for i, node in enumerate(all_nodes[:3]):
+                score = getattr(node, 'score', 0.0)
+                st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
+                st.text_area(
+                    f"Content {i+1} ({len(node.text)} characters):",
+                    value=node.text,
+                    height=200,
+                    disabled=True,
+                    key=f"fallback_chunk_{i}_{hash(prompt)}"
+                )
+                st.markdown("---")
+        return "\n\n".join([node.text for node in all_nodes[:3]])
+    else:
+        return None
+
+
+def _retrieve_context_pageindex(prompt):
+    """Retrieve context using PageIndex tree search (reasoning-based)."""
+    with st.spinner("Searching document tree..."):
+        retrieval_info = st.session_state.rag_system.get_retrieval_info(prompt)
+
+    if not retrieval_info:
+        return None
+
+    # Show LLM reasoning about which sections are relevant
+    reasoning = retrieval_info[0].get("metadata", {}).get("reasoning", "")
+    if reasoning:
+        with st.expander("🤔 Retrieval Reasoning", expanded=False):
+            st.markdown(reasoning)
+
+    # Show retrieved document sections (not "chunks", no similarity scores)
+    with st.expander(f"🌳 Retrieved {len(retrieval_info)} document sections", expanded=False):
+        for section in retrieval_info:
+            meta = section.get("metadata", {})
+            title = meta.get("title", "Untitled")
+            start = meta.get("start_page", "?")
+            end = meta.get("end_page", "?")
+            st.markdown(f"**{title}** (Pages {start}–{end})")
+            st.text_area(
+                f"{title} ({section['length']} characters):",
+                value=section["text"],
+                height=200,
+                disabled=True,
+                key=f"section_{section['chunk_id']}_{hash(prompt)}"
+            )
+            st.markdown("---")
+
+    return "\n\n".join([s["text"] for s in retrieval_info])
+
+
 def generate_response_with_ui(prompt, current_chat):
     """Generate AI response with UI components (streaming, reasoning, stop button) using RAG"""
     # Set generation state
@@ -56,66 +146,22 @@ def generate_response_with_ui(prompt, current_chat):
                 st.error(f"❌ **Error loading document**: {str(e)}")
                 return f"Error: Could not load document - {str(e)}"
         
-        logger.info("Using RAG system for response generation")
+        backend_type = getattr(st.session_state.rag_system, 'backend_type', 'vector')
+        logger.info(f"Using {backend_type} RAG system for response generation")
         
-        # Get retrieved chunks for RAG with current expert settings
+        # ── Retrieval (backend-specific) ─────────────────────────
         try:
-            # Read current expert parameters from session state for dynamic adjustment
-            current_threshold = st.session_state.rag_config.get("similarity_threshold", 0.7)
-            current_top_k = st.session_state.rag_config.get("top_k", 10)
-            
-            retrieval_info = st.session_state.rag_system.get_retrieval_info(
-                prompt,
-                similarity_threshold=current_threshold,
-                top_k=current_top_k
-            )
-            
-            # Get all retrieved chunks (before filtering) for fallback
-            try:
-                from llama_index.core.retrievers import VectorIndexRetriever
-                retriever = VectorIndexRetriever(
-                    index=st.session_state.rag_system.index,
-                    similarity_top_k=current_top_k
-                )
-                all_nodes = retriever.retrieve(prompt)
-            except Exception as e:
-                logger.warning(f"Could not get unfiltered chunks: {e}")
-                all_nodes = []
-            
-            # Display retrieved chunks information IMMEDIATELY (before generation)
-            if retrieval_info:
-                # Show chunks that passed the similarity threshold
-                with st.expander(f"📚 Retrieved {len(retrieval_info)} relevant chunks", expanded=False):
-                    for chunk in retrieval_info:
-                        st.markdown(f"**Chunk {chunk['chunk_id']}** (Score: {chunk['score']:.3f})")
-                        st.text_area(
-                            f"Content {chunk['chunk_id']} ({len(chunk['text'])} characters):",
-                            value=chunk['text'],
-                            height=200,
-                            disabled=True,
-                            key=f"chunk_{chunk['chunk_id']}_{hash(prompt)}"
-                        )
-                        st.markdown("---")
-                context_text = "\n\n".join([chunk['text'] for chunk in retrieval_info])
-            elif all_nodes:
-                # Show chunks that were retrieved but didn't pass threshold
-                st.warning(f"⚠️ **Similarity threshold too high**: Using top {min(3, len(all_nodes))} chunks with lower scores")
-                with st.expander(f"📚 Using {min(3, len(all_nodes))} chunks (below threshold)", expanded=False):
-                    for i, node in enumerate(all_nodes[:3]):
-                        score = getattr(node, 'score', 0.0)
-                        st.markdown(f"**Chunk {i+1}** (Score: {score:.3f}) - Below threshold ({st.session_state.rag_config['similarity_threshold']})")
-                        st.text_area(
-                            f"Content {i+1} ({len(node.text)} characters):",
-                            value=node.text,
-                            height=200,
-                            disabled=True,
-                            key=f"fallback_chunk_{i}_{hash(prompt)}"
-                        )
-                        st.markdown("---")
-                context_text = "\n\n".join([node.text for node in all_nodes[:3]])
+            if backend_type == "pageindex":
+                context_text = _retrieve_context_pageindex(prompt)
             else:
-                st.error("❌ No chunks retrieved for this query")
-                st.error("Try adjusting your question or lowering the similarity threshold in RAG Settings.")
+                context_text = _retrieve_context_vector(prompt)
+
+            if not context_text:
+                if backend_type == "pageindex":
+                    st.warning("No relevant sections found. Try rephrasing your question.")
+                else:
+                    st.error("❌ No chunks retrieved for this query")
+                    st.error("Try adjusting your question or lowering the similarity threshold in RAG Settings.")
                 return "Error: No relevant content found for this query."
                 
         except Exception as rag_error:
@@ -290,14 +336,21 @@ def render_chat_interface():
     # Show current document info
     if current_chat.document_name:
         with st.expander(f"📄 {current_chat.document_name}", expanded=False):
-            # Show RAG processing statistics
+            # Show RAG processing statistics (backend-aware)
             if current_chat.rag_processed:
                 rag_stats = current_chat.rag_stats or {}
+                chat_backend = current_chat.rag_backend
                 col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Chunks Created", rag_stats.get("total_chunks", 0))
-                with col2:
-                    st.metric("Chunk Size", f"{rag_stats.get('chunk_size', 0)} tokens")
+                if chat_backend == "pageindex":
+                    with col1:
+                        st.metric("Tree Nodes", rag_stats.get("total_nodes", 0))
+                    with col2:
+                        st.metric("Backend", "PageIndex")
+                else:
+                    with col1:
+                        st.metric("Chunks Created", rag_stats.get("total_chunks", 0))
+                    with col2:
+                        st.metric("Chunk Size", f"{rag_stats.get('chunk_size', 0)} tokens")
             else:
                 st.warning("⚠️ Document not processed with RAG system")
             

@@ -4,7 +4,14 @@ Configuration constants for Ragadoc
 This module contains all default configuration values used throughout the application.
 """
 
-# Default RAG Configuration
+# RAG Backend Options
+RAG_BACKENDS = {
+    "vector": "Vector RAG (Embeddings + ChromaDB)",
+    "pageindex": "PageIndex RAG (Tree-based Reasoning)",
+}
+DEFAULT_RAG_BACKEND = "vector"
+
+# Default RAG Configuration (vector backend)
 DEFAULT_RAG_CONFIG = {
     "chunk_size": 128,
     "chunk_overlap": 64,
